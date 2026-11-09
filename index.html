@@ -1,0 +1,219 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Flower Line</title>
+<meta name="description" content="A seat by the window on a train through sixteen flower fields.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Caveat:wght@400;600&family=Cormorant+Garamond:ital,wght@0,400;0,500;1,400&family=Pinyon+Script&display=swap" rel="stylesheet">
+<script type="importmap">
+{ "imports": {
+  "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js",
+  "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/"
+} }
+</script>
+<style>
+  :root {
+    --ink: #2e2620;
+    --ink-soft: #6a5a48;
+    --paper: #f2eadb;
+    --paper-deep: #e4d6bc;
+    --wax: #8e2a2a;
+    --leather: #2f4a3e;
+    --brass: #b89a62;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; overflow: hidden; background: #0d0a0c; color: var(--ink); }
+  body { font-family: "Cormorant Garamond", Georgia, serif; }
+  canvas#scene { position: fixed; inset: 0; width: 100vw; height: 100vh; display: block; }
+
+  #fade { position: fixed; inset: 0; background: #0d0a0c; z-index: 50; transition: opacity 2.2s ease; pointer-events: none; }
+  #fade.gone { opacity: 0; }
+
+  #veil {
+    position: fixed; inset: 0; z-index: 10; opacity: 0; pointer-events: none;
+    background: radial-gradient(ellipse at center, rgba(20,14,12,0.15), rgba(20,14,12,0.55));
+    backdrop-filter: blur(0px);
+    transition: opacity .4s ease, backdrop-filter .4s ease;
+  }
+  #veil.on { opacity: 1; pointer-events: auto; backdrop-filter: blur(3px); }
+
+  /* journal spread, sized to match the 3D book */
+  #book {
+    position: fixed; left: 50%; top: 50%; transform: translate(-50%, -50%);
+    z-index: 20; opacity: 0; pointer-events: none; perspective: 2600px;
+    background: var(--leather); border-radius: 0;
+    box-shadow: 0 30px 80px rgba(0,0,0,.45);
+    transition: opacity .38s ease;
+  }
+  #book.on { opacity: 1; pointer-events: auto; }
+  #book.dim .pg { opacity: .2; transition: opacity .2s; }
+  #book .pg, #book .flipper { position: absolute; cursor: pointer; }
+  #book .pg img, #book .flipper img { position: absolute; inset: 0; width: 100%; height: 100%; display: block; backface-visibility: hidden; user-select: none; -webkit-user-drag: none; }
+  #book .pg::after { content: ""; position: absolute; inset: 0; pointer-events: none; transition: box-shadow .25s; }
+  #book .pg.right:hover::after { box-shadow: inset -18px 0 26px -18px rgba(60,40,20,.45); }
+  #book .pg.left:not(.endpaper):hover::after { box-shadow: inset 18px 0 26px -18px rgba(60,40,20,.45); }
+  #book .flipper { transform-style: preserve-3d; transition: transform .8s cubic-bezier(.45,.05,.3,1); z-index: 2; pointer-events: none; }
+  #book .flipper .back { transform: rotateY(180deg); }
+
+  /* omakase letter */
+  #letter {
+    position: fixed; inset: 0; z-index: 20; display: grid; place-items: center;
+    opacity: 0; pointer-events: none; transition: opacity .4s ease;
+  }
+  #letter.on { opacity: 1; pointer-events: auto; }
+  #letter .sheet {
+    width: min(540px, 92vw); max-height: 90vh; overflow: auto;
+    padding: 44px 52px 40px;
+    background: var(--paper) url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='160' height='160'><filter id='n'><feTurbulence baseFrequency='.8' numOctaves='3' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 .4  0 0 0 0 .32  0 0 0 0 .22  0 0 0 .09 0'/></filter><rect width='100%' height='100%' filter='url(%23n)'/></svg>");
+    box-shadow: 0 30px 80px rgba(0,0,0,.45);
+    transform: translateY(14px) scale(.97); transition: transform .5s cubic-bezier(.2,.8,.2,1);
+    scrollbar-width: thin;
+  }
+  #letter.on .sheet { transform: none; }
+  #letter h2 { font: 400 64px/1 "Pinyon Script", cursive; margin: 0 0 6px; text-align: center; color: var(--ink); }
+  #letter .lede { text-align: center; font-size: 19px; font-style: italic; color: var(--ink-soft); margin: 0 0 26px; }
+  #letter label { display: block; font-size: 17px; color: var(--ink-soft); margin: 16px 0 2px; }
+  #letter input, #letter textarea {
+    width: 100%; border: 0; border-bottom: 1px solid rgba(60,45,30,.35); background: transparent;
+    font: 28px/1.2 "Caveat", cursive; color: #2b3a5a; padding: 2px 0 4px; outline: none; resize: none;
+  }
+  #letter input:focus, #letter textarea:focus { border-bottom-color: var(--ink); }
+  #letter .row { display: grid; grid-template-columns: 1fr 1fr; gap: 0 24px; }
+  #letter .pills { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 6px; }
+  #letter .pill {
+    font: 500 16px "Cormorant Garamond", serif; padding: 6px 14px; border-radius: 999px;
+    background: rgba(90,70,50,.08); color: var(--ink); border: 0; cursor: pointer; transition: background .2s, color .2s;
+  }
+  #letter .pill:hover { background: rgba(90,70,50,.16); }
+  #letter .pill.picked { background: var(--leather); color: var(--paper); }
+  #letter .seal {
+    display: block; margin: 30px auto 0; border: 0; cursor: pointer;
+    width: 86px; height: 86px; border-radius: 50%;
+    background: radial-gradient(circle at 38% 34%, #b04040, var(--wax) 55%, #5e1818);
+    color: #f3d9c4; font: 400 22px "Pinyon Script", cursive;
+    box-shadow: 0 4px 10px rgba(80,20,20,.35), inset 0 -3px 6px rgba(0,0,0,.3);
+    transition: transform .2s;
+  }
+  #letter .seal:hover { transform: scale(1.05) rotate(-4deg); }
+  #letter .thanks { display: none; text-align: center; padding: 40px 0 20px; }
+  #letter .thanks p { font: 30px/1.3 "Caveat", cursive; color: #2b3a5a; margin: 18px 0 0; }
+  #letter.sealed form { display: none; }
+  #letter.sealed .thanks { display: block; }
+
+  /* intercom chat */
+  #chat {
+    position: fixed; top: 12vh; left: calc(50% - 200px); width: 400px; height: min(460px, 64vh);
+    z-index: 30; display: flex; flex-direction: column;
+    background: rgba(242,234,219,.97); color: var(--ink);
+    border-radius: 18px; box-shadow: 0 24px 60px rgba(0,0,0,.4);
+    opacity: 0; transform: scale(.2); pointer-events: none;
+    transition: opacity .3s ease, transform .45s cubic-bezier(.2,.9,.25,1.1);
+  }
+  #chat.on { opacity: 1; transform: none; pointer-events: auto; }
+  #chat header {
+    display: flex; align-items: center; justify-content: space-between; padding: 14px 18px 10px;
+    background: linear-gradient(#9a8462, #7f6a4c); color: #f6ecd8; border-radius: 18px 18px 0 0;
+  }
+  #chat header h3 { margin: 0; font: 400 30px/1 "Pinyon Script", cursive; }
+  #chat header .grille { flex: 1; height: 14px; margin: 0 14px; background: radial-gradient(circle, rgba(30,24,20,.55) 1.6px, transparent 2px) 0 0 / 8px 7px; }
+  #chat .close { background: none; border: 0; color: inherit; font: 500 15px "Cormorant Garamond", serif; cursor: pointer; opacity: .85; }
+  #chat .close:hover { opacity: 1; }
+  #chat .log { flex: 1; overflow: auto; padding: 14px 16px; display: flex; flex-direction: column; gap: 8px; scrollbar-width: thin; }
+  #chat .msg { margin: 0; max-width: 82%; padding: 9px 13px; border-radius: 14px; font-size: 17px; line-height: 1.35; }
+  #chat .msg.them { background: rgba(90,70,50,.1); align-self: flex-start; border-bottom-left-radius: 4px; }
+  #chat .msg.me { background: var(--leather); color: var(--paper); align-self: flex-end; border-bottom-right-radius: 4px; }
+  #chat .msg.typing { opacity: .6; }
+  #chat form { display: flex; gap: 8px; padding: 10px 12px 14px; }
+  #chat input { flex: 1; border: 0; border-radius: 999px; padding: 10px 16px; background: rgba(90,70,50,.1); font: 17px "Cormorant Garamond", serif; color: var(--ink); outline: none; }
+  #chat input:focus { background: rgba(90,70,50,.16); }
+  #chat form button { border: 0; border-radius: 999px; padding: 0 18px; background: var(--leather); color: var(--paper); font: 500 16px "Cormorant Garamond", serif; cursor: pointer; }
+
+  #sound {
+    position: fixed; right: 22px; bottom: 20px; z-index: 40; width: 42px; height: 42px; border-radius: 50%;
+    border: 0; cursor: pointer; display: grid; place-items: center;
+    background: rgba(20,16,14,.35); color: rgba(246,236,216,.8); backdrop-filter: blur(4px);
+    transition: background .2s, color .2s;
+  }
+  #sound:hover { background: rgba(20,16,14,.55); color: #fff; }
+  #sound .wave { opacity: 0; transition: opacity .2s; }
+  #sound.on .wave { opacity: 1; }
+  #sound.on .mute { opacity: 0; }
+
+  #dev {
+    position: fixed; left: 16px; bottom: 16px; z-index: 40; padding: 10px 14px; border-radius: 12px;
+    background: rgba(20,16,14,.6); color: #f0e6d4; font: 14px system-ui, sans-serif; display: grid; gap: 6px;
+  }
+  #dev label { display: flex; gap: 8px; align-items: center; }
+  #dev .fps { opacity: .7; font-size: 12px; }
+</style>
+</head>
+<body>
+<canvas id="scene"></canvas>
+<div id="veil"></div>
+
+<div id="book" aria-label="Journal of bouquets">
+  <div class="pg left"><img alt=""></div>
+  <div class="pg right"><img alt=""></div>
+</div>
+
+<div id="letter" role="dialog" aria-label="Omakase order">
+  <div class="sheet">
+    <form>
+      <h2>Omakase</h2>
+      <p class="lede">Tell us who it's for. We'll choose everything else.</p>
+      <div class="row">
+        <div><label for="o-who">Who is it for</label><input id="o-who" name="who" autocomplete="off"></div>
+        <div><label for="o-when">When should it arrive</label><input id="o-when" name="when" type="date"></div>
+      </div>
+      <label for="o-why">The occasion</label>
+      <input id="o-why" name="occasion" autocomplete="off">
+      <label>Budget</label>
+      <div class="pills" data-name="budget">
+        <button type="button" class="pill">฿1,500</button><button type="button" class="pill">฿2,500</button><button type="button" class="pill">฿4,000</button><button type="button" class="pill">Surprise us</button>
+      </div>
+      <label>A feeling</label>
+      <div class="pills" data-name="feeling">
+        <button type="button" class="pill">Soft</button><button type="button" class="pill">Bright</button><button type="button" class="pill">Wild</button><button type="button" class="pill">Quiet</button>
+      </div>
+      <label for="o-card">A note for the card</label>
+      <textarea id="o-card" name="card" rows="2"></textarea>
+      <div class="row">
+        <div><label for="o-name">Your name</label><input id="o-name" name="name" autocomplete="name"></div>
+        <div><label for="o-line">LINE or phone</label><input id="o-line" name="contact" autocomplete="tel"></div>
+      </div>
+      <button class="seal" type="submit">seal</button>
+    </form>
+    <div class="thanks">
+      <h2>Sealed</h2>
+      <p>We'll write back within the day</p>
+    </div>
+  </div>
+</div>
+
+<div id="chat" role="dialog" aria-label="Intercom">
+  <header><h3>Intercom</h3><span class="grille"></span><button class="close" type="button">close</button></header>
+  <div class="log" aria-live="polite"></div>
+  <form><input placeholder="Speak to the front carriage" autocomplete="off"><button type="submit">Send</button></form>
+</div>
+
+<button id="sound" type="button" aria-label="Sound" aria-pressed="false">
+  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M4 9v6h4l5 4V5L8 9H4z" fill="currentColor" stroke="none"/>
+    <path class="wave" d="M16.5 8.5a5 5 0 0 1 0 7M19 6a8.5 8.5 0 0 1 0 12"/>
+    <path class="mute" d="M17 9l5 6M22 9l-5 6"/>
+  </svg>
+</button>
+
+<div id="dev" hidden>
+  <label>time <input type="range" name="hour" min="0" max="24" step="0.25"> <span class="hour"></span></label>
+  <label>weather <select name="weather"></select></label>
+  <span class="fps"></span>
+</div>
+
+<div id="fade"></div>
+<script type="module" src="js/main.js"></script>
+</body>
+</html>
