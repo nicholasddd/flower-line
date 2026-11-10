@@ -246,6 +246,7 @@ function startAudio() {
   rainGain.gain.value = raining ? 0.05 : 0;
   rain.connect(hp).connect(rainGain).connect(master);
   rain.start();
+  startMusic();
 }
 
 function setupSound() {
@@ -296,6 +297,116 @@ export function chime(vol = 1) {
     o.connect(g).connect(master);
     o.start(t + dt); o.stop(t + dt + 1.3);
   });
+}
+
+// ---------- music: a slow, never-repeating piano tune, made in code ----------
+// Electric-piano chords and a wandering arpeggio over a soft pad, through a
+// long reverb. Unhurried, like looking out of the window.
+const BPM = 70, BEAT = 60 / BPM;
+// Fmaj7  Em7  Dm7  Cmaj7  Bbmaj7  Am7  Dm7  G7sus
+const CHORDS = [
+  [41, 53, 57, 60, 64], [40, 52, 55, 59, 62], [38, 50, 53, 57, 60], [36, 52, 55, 59, 64],
+  [34, 50, 53, 57, 62], [33, 52, 55, 60, 64], [38, 53, 57, 60, 65], [31, 53, 55, 60, 62],
+];
+const midi = (n) => 440 * Math.pow(2, (n - 69) / 12);
+let musicBus = null, musicTimer = 0, nextNote = 0, step = 0, phrase = [];
+
+function reverb(seconds) {
+  const len = ac.sampleRate * seconds;
+  const b = ac.createBuffer(2, len, ac.sampleRate);
+  for (let c = 0; c < 2; c++) {
+    const d = b.getChannelData(c);
+    for (let i = 0; i < len; i++) d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / len, 3);
+  }
+  const v = ac.createConvolver();
+  v.buffer = b;
+  return v;
+}
+
+// a soft FM electric piano: bright on the strike, mellowing as it rings
+function epiano(n, t, vel, dur = 2.6) {
+  const f = midi(n);
+  const car = ac.createOscillator(), mod = ac.createOscillator();
+  const mg = ac.createGain(), g = ac.createGain();
+  car.frequency.value = f;
+  mod.frequency.value = f;
+  mg.gain.setValueAtTime(f * 1.6 * vel, t);
+  mg.gain.exponentialRampToValueAtTime(f * 0.05, t + 0.9);
+  mod.connect(mg).connect(car.frequency);
+  g.gain.setValueAtTime(0, t);
+  g.gain.linearRampToValueAtTime(0.16 * vel, t + 0.008);
+  g.gain.exponentialRampToValueAtTime(0.0008, t + dur);
+  const pan = ac.createStereoPanner();
+  pan.pan.value = (n - 60) / 40;
+  car.connect(g).connect(pan).connect(musicBus);
+  car.start(t); mod.start(t);
+  car.stop(t + dur + 0.05); mod.stop(t + dur + 0.05);
+}
+
+function pad(notes, t, dur) {
+  const lp = ac.createBiquadFilter();
+  lp.type = 'lowpass'; lp.frequency.value = 900;
+  const g = ac.createGain();
+  g.gain.setValueAtTime(0, t);
+  g.gain.linearRampToValueAtTime(0.035, t + dur * 0.35);
+  g.gain.linearRampToValueAtTime(0, t + dur + 0.6);
+  lp.connect(g).connect(musicBus);
+  for (const n of notes.slice(1)) for (const det of [-6, 6]) {
+    const o = ac.createOscillator();
+    o.type = 'triangle';
+    o.frequency.value = midi(n);
+    o.detune.value = det;
+    o.connect(lp);
+    o.start(t); o.stop(t + dur + 0.7);
+  }
+}
+
+function bass(n, t, dur) {
+  const o = ac.createOscillator(), g = ac.createGain();
+  o.frequency.value = midi(n);
+  g.gain.setValueAtTime(0, t);
+  g.gain.linearRampToValueAtTime(0.11, t + 0.03);
+  g.gain.exponentialRampToValueAtTime(0.01, t + dur);
+  o.connect(g).connect(musicBus);
+  o.start(t); o.stop(t + dur + 0.05);
+}
+
+// each chord lasts two bars of eighth notes; the arpeggio wanders over the
+// chord tones an octave or two up, with rests so it breathes
+function scheduleStep(t) {
+  const ci = Math.floor(step / 16) % CHORDS.length;
+  const chord = CHORDS[ci];
+  const pos = step % 16;
+  if (pos === 0) {
+    const len = BEAT * 8;
+    bass(chord[0], t, len);
+    pad(chord, t, len);
+    chord.slice(1, 4).forEach((n, i) => epiano(n, t + i * 0.025, 0.55, 3.5));
+    // a new little phrase for this chord
+    const tones = [...chord.slice(1).map((n) => n + 12), ...chord.slice(1, 3).map((n) => n + 24)];
+    phrase = Array.from({ length: 16 }, (_, i) => (i > 0 && Math.random() < (i % 2 ? 0.3 : 0.55)) ? tones[Math.floor(Math.random() * tones.length)] : 0);
+  }
+  if (pos === 8 && Math.random() < 0.6) chord.slice(2, 5).forEach((n, i) => epiano(n, t + i * 0.02, 0.35, 2.5));
+  const n = phrase[pos];
+  if (n) epiano(n, t + (pos % 2 ? 0.03 : 0), 0.35 + Math.random() * 0.3, 2.2);
+}
+
+function startMusic() {
+  musicBus = ac.createGain();
+  musicBus.gain.value = 0.55;
+  const verb = reverb(3.2);
+  const wet = ac.createGain(); wet.gain.value = 0.45;
+  musicBus.connect(master);
+  musicBus.connect(verb).connect(wet).connect(master);
+  nextNote = ac.currentTime + 0.3;
+  musicTimer = setInterval(() => {
+    if (!soundOn) { nextNote = ac.currentTime + 0.3; return; }
+    while (nextNote < ac.currentTime + 0.4) {
+      scheduleStep(nextNote);
+      nextNote += BEAT / 2;
+      step++;
+    }
+  }, 100);
 }
 
 // ---------- dev ----------
