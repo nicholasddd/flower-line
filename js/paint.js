@@ -2,22 +2,22 @@
 // bouquet paintings, journal pages, signboards and surface textures.
 
 export const FLOWERS = [
-  { key: 'roses',          name: 'Roses',          height: 0.70, tint: '#a3283a', rows: 0, hueVar: 0.015 },
-  { key: 'peonies',        name: 'Peonies',        height: 0.80, tint: '#e9a3b4', rows: 0, hueVar: 0.015 },
-  { key: 'carnations',     name: 'Carnations',     height: 0.60, tint: '#e78a9e', rows: 1, hueVar: 0.015 },
-  { key: 'begonias',       name: 'Begonias',       height: 0.45, tint: '#f0c4cc', rows: 0, hueVar: 0.015 },
-  { key: 'daisies',        name: 'Daisies',        height: 0.50, tint: '#e9ecd8', rows: 0, hueVar: 0.00 },
-  { key: 'hydrangeas',     name: 'Hydrangeas',     height: 0.90, tint: '#7f8fd0', rows: 0, hueVar: 0.015 },
-  { key: 'orchids',        name: 'Orchids',        height: 0.60, tint: '#e3cf5a', rows: 1, hueVar: 0.015 },
-  { key: 'lilies',         name: 'Lilies',         height: 0.90, tint: '#e98aa8', rows: 0, hueVar: 0.015 },
-  { key: 'chrysanthemums', name: 'Chrysanthemums', height: 0.60, tint: '#efa4b6', rows: 1, hueVar: 0.015 },
-  { key: 'ranunculus',     name: 'Ranunculus',     height: 0.50, tint: '#ef8a3a', rows: 1, hueVar: 0.015 },
-  { key: 'dahlias',        name: 'Dahlias',        height: 0.90, tint: '#c37ac8', rows: 1, hueVar: 0.015 },
-  { key: 'tulips',         name: 'Tulips',         height: 0.55, tint: '#f28a2e', rows: 1, hueVar: 0.015 },
-  { key: 'irises',         name: 'Irises',         height: 0.80, tint: '#6a4fb8', rows: 1, hueVar: 0.015 },
-  { key: 'azaleas',        name: 'Azaleas',        height: 0.80, tint: '#f2c6d6', rows: 0, hueVar: 0.015 },
-  { key: 'sunflowers',     name: 'Sunflowers',     height: 1.75, tint: '#efc028', rows: 1, hueVar: 0.00 },
-  { key: 'violets',        name: 'Violets',        height: 0.30, tint: '#6f6cc4', rows: 0, hueVar: 0.015 },
+  { key: 'daisies',       name: 'Daisies',         height: 0.50, tint: '#f2d86a', rows: 0, hueVar: 0.01 },
+  { key: 'poppies',       name: 'Poppies',         height: 0.70, tint: '#d8262a', rows: 0, hueVar: 0.01 },
+  { key: 'lavender',      name: 'Lavender',        height: 0.70, tint: '#9b86c9', rows: 1, hueVar: 0.01 },
+  { key: 'cosmos',        name: 'Cosmos',          height: 0.90, tint: '#f2b6c8', rows: 0, hueVar: 0.01 },
+  { key: 'sunflowers',    name: 'Sunflowers',      height: 1.10, tint: '#efc028', rows: 1, hueVar: 0.00 },
+  { key: 'delphiniums',   name: 'Delphiniums',     height: 1.00, tint: '#5b84d8', rows: 1, hueVar: 0.01 },
+  { key: 'marigolds',     name: 'Marigolds',       height: 0.45, tint: '#f08a1c', rows: 1, hueVar: 0.01 },
+  { key: 'anemones',      name: 'Anemones',        height: 0.45, tint: '#efe9de', rows: 0, hueVar: 0.00 },
+  { key: 'spiderLilies',  name: 'Spider Lilies',   height: 0.55, tint: '#c4142a', rows: 0, hueVar: 0.01 },
+  { key: 'tulips',        name: 'Tulips',          height: 0.55, tint: '#b49ad8', rows: 1, hueVar: 0.01 },
+  { key: 'dahlias',       name: 'Dahlias',         height: 0.90, tint: '#d63c8e', rows: 1, hueVar: 0.01 },
+  { key: 'hydrangeas',    name: 'Hydrangeas',      height: 0.90, tint: '#9cc0e8', rows: 0, hueVar: 0.01 },
+  { key: 'ranunculus',    name: 'Ranunculus',      height: 0.50, tint: '#f4a08a', rows: 1, hueVar: 0.01 },
+  { key: 'rapeseed',      name: 'Rapeseed',        height: 0.90, tint: '#f2e23a', rows: 0, hueVar: 0.00 },
+  { key: 'irises',        name: 'Irises',          height: 0.80, tint: '#4b2f9a', rows: 1, hueVar: 0.01 },
+  { key: 'forgetMeNots',  name: 'Forget-me-nots',  height: 0.30, tint: '#86b8ee', rows: 0, hueVar: 0.01 },
 ];
 
 export const CELL = 256, COLS = 8, ROWS = 5;
@@ -255,8 +255,8 @@ const DRAW = {
     for (let i = 0; i < 6; i++) leaf(ctx, R, 128 + (R() - 0.5) * 40, 214 + R() * 30, -Math.PI / 2 + (R() - 0.5) * 2, 30, 7, 100, 36, 34);
     for (const [x, y] of heads) {
       squash(ctx, x, y, 0.78, () => {
-        radial(ctx, R, x, y, 18, 31, 5.5, 48, 18, 95, 'thin', { base: -16, tip: 2, lj: 4 });
-        dab(ctx, x, y, 9, hsl(44, 92, 52));
+        radial(ctx, R, x, y, 18, 31, 5.5, 50, 82, 76, 'thin', { base: -14, tip: 4, lj: 5 });
+        dab(ctx, x, y, 9, hsl(32, 80, 42));
         for (let i = 0; i < 10; i++) {
           const a = R() * TAU, r = R() * 7;
           dab(ctx, x + Math.cos(a) * r, y + Math.sin(a) * r, 1.6, hsl(34, 90, 38, 0.8));
@@ -270,13 +270,13 @@ const DRAW = {
       leaf(ctx, R, 128 + (R() - 0.5) * 70, 180 + R() * 50, -Math.PI / 2 + (R() - 0.5) * 2.6, 54, 24, 120, 40, 26);
     }
     const cx = 128, cy = 98, r0 = 62;
-    const h0 = v ? 238 : 228;
+    const h0 = v ? 212 : 206;
     for (let i = 0; i < 90; i++) {
       const a = R() * TAU, rr = Math.sqrt(R()) * r0;
       const x = cx + Math.cos(a) * rr, y = cy + Math.sin(a) * rr * 0.82;
       const shade = ((y - cy) / r0) * 12;
       squash(ctx, x, y, 0.85, () => {
-        radial(ctx, R, x, y, 4, 10, 8, h0 + R() * 30, 46, 72 - shade + (R() - 0.5) * 8, 'round', { lenJit: 0.1 });
+        radial(ctx, R, x, y, 4, 10, 8, h0 + R() * 14, 64, 70 - shade + (R() - 0.5) * 8, 'round', { lenJit: 0.1 });
         dab(ctx, x, y, 1.6, hsl(h0, 30, 90));
       });
     }
@@ -347,11 +347,11 @@ const DRAW = {
     for (let i = 0; i < 6; i++) leaf(ctx, R, 128 + (R() - 0.5) * 30, 170 + i * 13, i % 2 ? -0.8 : Math.PI + 0.8, 30, 12, 112, 36, 32);
     for (const [x, y] of heads) {
       const k = v ? 0.78 : 1;
-      const h = v ? 22 : 26;
+      const h = v ? 10 : 14;
       squash(ctx, x, y, 0.8, () => {
         for (let r = 48; r > 5; r -= 5) {
           const rr = r * k, t = (48 - r) / 48;
-          dab(ctx, x, y, rr, hsl(h + t * 8, 88, 46 + t * 22));
+          dab(ctx, x, y, rr, hsl(h + t * 10, 82, 64 + t * 16));
           ctx.strokeStyle = hsl(h, 80, 32 + t * 20, 0.65);
           ctx.lineWidth = 1.6;
           const segs = Math.max(4, Math.floor(r / 4));
@@ -371,12 +371,12 @@ const DRAW = {
     const cx = 128, cy = 80;
     stem(ctx, 128, 256, cx, cy + 30, 5, (R() - 0.5) * 20);
     for (let i = 0; i < 6; i++) leaf(ctx, R, 128, 150 + i * 17, i % 2 ? -0.5 : Math.PI + 0.5, 34, 13, 115, 36, 28);
-    const h = v ? 308 : 302;
+    const h = v ? 326 : 322;
     squash(ctx, cx, cy, 0.82, () => {
-      radial(ctx, R, cx, cy, 16, 58, 13, h, 52, 64, 'point', { tip: 22, jit: 0.04, off: 0 });
-      radial(ctx, R, cx, cy, 14, 45, 12, h, 54, 66, 'point', { tip: 22, jit: 0.04, off: 0.2 });
-      radial(ctx, R, cx, cy, 12, 32, 10, h, 56, 70, 'point', { tip: 20, jit: 0.04, off: 0.1 });
-      radial(ctx, R, cx, cy, 10, 19, 8, h, 56, 74, 'point', { tip: 16, off: 0.3 });
+      radial(ctx, R, cx, cy, 16, 58, 13, h, 70, 50, 'point', { tip: 22, jit: 0.04, off: 0 });
+      radial(ctx, R, cx, cy, 14, 45, 12, h, 72, 54, 'point', { tip: 22, jit: 0.04, off: 0.2 });
+      radial(ctx, R, cx, cy, 12, 32, 10, h, 72, 58, 'point', { tip: 20, jit: 0.04, off: 0.1 });
+      radial(ctx, R, cx, cy, 10, 19, 8, h, 70, 64, 'point', { tip: 16, off: 0.3 });
       dab(ctx, cx, cy, 5, hsl(50, 80, 56));
     });
   },
@@ -385,12 +385,12 @@ const DRAW = {
     const heads = [[102, 92], [158, 76]];
     for (const [x, y] of heads) stem(ctx, x + (128 - x) * 0.3, 256, x, y + 30, 5, (R() - 0.5) * 10, hsl(110, 30, 38));
     for (let i = 0; i < 4; i++) leaf(ctx, R, 100 + i * 18, 256, -Math.PI / 2 + (i - 1.5) * 0.35, 120 + R() * 30, 15, 120, 26, 40);
-    const h = v ? 22 : 28;
+    const h = v ? 268 : 274;
     for (const [x, y] of heads) {
       const by = y + 34;
-      petal(ctx, R, x, by, -Math.PI / 2 - 0.3, 58, 22, h, 90, 46, 'round', { tipHue: h + 18, tip: 12 });
-      petal(ctx, R, x, by, -Math.PI / 2 + 0.3, 58, 22, h, 90, 46, 'round', { tipHue: h + 18, tip: 12 });
-      petal(ctx, R, x, by, -Math.PI / 2, 62, 24, h, 92, 54, 'round', { tipHue: h + 20, tip: 14 });
+      petal(ctx, R, x, by, -Math.PI / 2 - 0.3, 58, 22, h, 42, 62, 'round', { tipHue: h + 6, tip: 12 });
+      petal(ctx, R, x, by, -Math.PI / 2 + 0.3, 58, 22, h, 42, 62, 'round', { tipHue: h + 6, tip: 12 });
+      petal(ctx, R, x, by, -Math.PI / 2, 62, 24, h, 46, 70, 'round', { tipHue: h + 8, tip: 12 });
     }
   },
 
@@ -398,12 +398,12 @@ const DRAW = {
     for (let i = 0; i < 5; i++) leaf(ctx, R, 100 + i * 14, 256, -Math.PI / 2 + (i - 2) * 0.12, 150 + R() * 40, 8, 120, 30, 36);
     const cx = 128, cy = 72;
     stem(ctx, 128, 256, cx, cy + 20, 4);
-    const h = v ? 250 : 266;
+    const h = v ? 258 : 264;
     for (const a of [Math.PI / 2 - 0.9, Math.PI / 2 + 0.9, Math.PI / 2]) {
-      petal(ctx, R, cx, cy + 6, a, 44, 22, h, 58, 44, 'round', { vein: hsl(48, 95, 60, 0.9), tip: 10 });
+      petal(ctx, R, cx, cy + 6, a, 44, 22, h, 62, 32, 'round', { vein: hsl(48, 95, 60, 0.9), tip: 10 });
     }
     for (const a of [-Math.PI / 2, -Math.PI / 2 - 0.45, -Math.PI / 2 + 0.45]) {
-      petal(ctx, R, cx, cy, a, 40, 17, h, 52, 60, 'round', { tip: 10 });
+      petal(ctx, R, cx, cy, a, 40, 17, h, 56, 42, 'round', { tip: 10 });
     }
   },
 
@@ -448,6 +448,168 @@ const DRAW = {
       }
       dab(ctx, cx - 8, cy - 9, 7, 'rgba(255,220,150,0.12)');
     });
+  },
+
+  poppies(ctx, R, v) {
+    const heads = v ? [[96, 84], [170, 112]] : [[128, 76]];
+    for (const [x, y] of heads) stem(ctx, x + (128 - x) * 0.4, 256, x, y + 16, 3, (R() - 0.5) * 34, hsl(100, 26, 38));
+    for (let i = 0; i < 5; i++) leaf(ctx, R, 128 + (R() - 0.5) * 50, 220 + R() * 30, -Math.PI / 2 + (R() - 0.5) * 1.8, 40, 9, 100, 26, 40, 'frill');
+    // a drooping bud
+    stem(ctx, 150, 256, 196, 120, 2.5, 30, hsl(100, 26, 38));
+    dab(ctx, 198, 128, 8, hsl(100, 22, 40));
+    for (const [x, y] of heads) {
+      const k = v ? 0.85 : 1;
+      squash(ctx, x, y, 0.8, () => {
+        for (const a of [-2.4, -0.7, 0.9, 2.5]) petal(ctx, R, x, y, a, 42 * k, 36 * k, 358, 86, 44, 'round', { base: -18, tip: 4, edge: hsl(356, 80, 30, 0.4) });
+        for (const a of [-1.6, 0.1, 1.7]) petal(ctx, R, x, y, a, 30 * k, 26 * k, 2, 88, 52, 'round', { base: -20 });
+        dab(ctx, x, y, 11 * k, hsl(0, 10, 8));
+        for (let i = 0; i < 18; i++) {
+          const a = (i / 18) * TAU;
+          dab(ctx, x + Math.cos(a) * 13 * k, y + Math.sin(a) * 13 * k, 1.8, hsl(260, 20, 14));
+        }
+        dab(ctx, x, y, 5 * k, hsl(90, 30, 40));
+      });
+    }
+  },
+
+  lavender(ctx, R, v) {
+    const n = v ? 9 : 7;
+    for (let i = 0; i < n; i++) {
+      const x = 50 + (i / (n - 1)) * 156 + (R() - 0.5) * 10, top = 40 + R() * 50;
+      stem(ctx, 128 + (x - 128) * 0.35, 256, x, top + 50, 2.5, (R() - 0.5) * 14, hsl(110, 14, 46));
+      for (let j = 0; j < 14; j++) {
+        const y = top + j * 4.2, w = 6 - j * 0.15;
+        dab(ctx, x + (R() - 0.5) * 3 - w * 0.5, y, 3.4, hsl(262, 42, 48 + R() * 16));
+        dab(ctx, x + (R() - 0.5) * 3 + w * 0.5, y + 2, 3.2, hsl(266, 46, 56 + R() * 14));
+      }
+    }
+    for (let i = 0; i < 10; i++) leaf(ctx, R, 128 + (R() - 0.5) * 80, 250, -Math.PI / 2 + (R() - 0.5) * 1.2, 36, 4, 110, 12, 50);
+  },
+
+  cosmos(ctx, R, v) {
+    const heads = v ? [[90, 70], [168, 96]] : [[124, 64], [176, 130]];
+    for (const [x, y] of heads) stem(ctx, 128 + (x - 128) * 0.3, 256, x, y + 8, 2.5, (R() - 0.5) * 30, hsl(100, 34, 36));
+    // feathery leaves
+    ctx.strokeStyle = hsl(100, 36, 38);
+    ctx.lineWidth = 1.4;
+    for (let i = 0; i < 26; i++) {
+      const x = 128 + (R() - 0.5) * 70, y = 150 + R() * 100, a = R() * TAU;
+      ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x + Math.cos(a) * 18, y + Math.sin(a) * 18); ctx.stroke();
+    }
+    for (const [x, y] of heads) {
+      squash(ctx, x, y, 0.8, () => {
+        radial(ctx, R, x, y, 8, 38, 13, 342, 62, 84, 'frill', { base: -10, tip: 2, lj: 6, jit: 0.05 });
+        dab(ctx, x, y, 7, hsl(46, 90, 52));
+        for (let i = 0; i < 8; i++) dab(ctx, x + (R() - 0.5) * 9, y + (R() - 0.5) * 9, 1.6, hsl(36, 80, 40));
+      });
+    }
+  },
+
+  delphiniums(ctx, R, v) {
+    const spikes = v ? [[100, 30], [160, 54]] : [[128, 24]];
+    for (let i = 0; i < 6; i++) leaf(ctx, R, 128 + (R() - 0.5) * 40, 228 + R() * 20, -Math.PI / 2 + (R() - 0.5) * 2, 40, 14, 110, 34, 30, 'frill');
+    for (const [x, top] of spikes) {
+      stem(ctx, x, 256, x, top + 10, 4, (R() - 0.5) * 8);
+      for (let j = 0; j < 13; j++) {
+        const y = top + j * 13, w = 8 + j * 1.5;
+        for (const side of [-1, 1]) {
+          const fx = x + side * w * (0.4 + R() * 0.4), fy = y + R() * 6;
+          const s = 0.55 + j * 0.035;
+          squash(ctx, fx, fy, 0.9, () => {
+            radial(ctx, R, fx, fy, 5, 11 * s, 8 * s, 222, 64, 56 + R() * 10, 'round', { lj: 10 });
+            dab(ctx, fx, fy, 2.4 * s, j % 3 ? hsl(0, 0, 94) : hsl(240, 30, 20));
+          });
+        }
+      }
+    }
+  },
+
+  marigolds(ctx, R, v) {
+    const heads = v ? [[92, 112], [164, 96], [130, 150]] : [[110, 100], [162, 124]];
+    for (let i = 0; i < 10; i++) leaf(ctx, R, 128 + (R() - 0.5) * 100, 200 + R() * 50, R() * TAU, 26, 8, 110, 40, 26, 'frill');
+    for (const [x, y] of heads) stem(ctx, x, 256, x, y + 20, 3.5, (R() - 0.5) * 10);
+    for (const [x, y] of heads) {
+      squash(ctx, x, y, 0.82, () => {
+        for (let r = 34; r > 4; r -= 6) {
+          radial(ctx, R, x, y, 12, r, 9, 30 - (34 - r) * 0.2, 96, 48 + (34 - r) * 0.5, 'frill', { base: -14, tip: 6, jit: 0.3 });
+        }
+        dab(ctx, x, y, 4, hsl(26, 90, 36));
+      });
+    }
+  },
+
+  anemones(ctx, R, v) {
+    const heads = v ? [[94, 92], [168, 76]] : [[128, 78]];
+    for (const [x, y] of heads) stem(ctx, x + (128 - x) * 0.3, 256, x, y + 14, 3, (R() - 0.5) * 20, hsl(100, 30, 34));
+    for (let i = 0; i < 6; i++) leaf(ctx, R, 128 + (R() - 0.5) * 60, 160 + R() * 30, R() * TAU, 22, 8, 105, 36, 30, 'frill');
+    for (const [x, y] of heads) {
+      const k = v ? 0.82 : 1;
+      squash(ctx, x, y, 0.82, () => {
+        radial(ctx, R, x, y, 6, 40 * k, 24 * k, 40, 22, 93, 'round', { base: -10, tip: 3, lj: 3 });
+        dab(ctx, x, y, 13 * k, hsl(240, 20, 10));
+        for (let i = 0; i < 26; i++) {
+          const a = R() * TAU, r = 13 * k + R() * 6 * k;
+          dab(ctx, x + Math.cos(a) * r, y + Math.sin(a) * r, 1.6, hsl(250, 30, 12, 0.85));
+        }
+        dab(ctx, x - 3, y - 3, 3 * k, hsl(240, 10, 30, 0.6));
+      });
+    }
+  },
+
+  spiderLilies(ctx, R, v) {
+    const heads = v ? [[96, 88], [168, 70]] : [[128, 70]];
+    for (const [x, y] of heads) stem(ctx, x + (128 - x) * 0.3, 256, x, y + 6, 4, (R() - 0.5) * 12, hsl(96, 30, 38));
+    for (const [x, y] of heads) {
+      // an umbel of narrow, curling petals and long arching stamens
+      for (let i = 0; i < 7; i++) {
+        const a = (i / 7) * TAU + R() * 0.3;
+        const ex = x + Math.cos(a) * 30, ey = y + Math.sin(a) * 22;
+        ctx.strokeStyle = hsl(354, 86, 44);
+        ctx.lineWidth = 4;
+        ctx.lineCap = 'round';
+        ctx.beginPath();
+        ctx.moveTo(x, y);
+        ctx.quadraticCurveTo(ex, ey - 6, ex + Math.cos(a) * 6, ey + 8);
+        ctx.stroke();
+        ctx.strokeStyle = hsl(358, 80, 52, 0.9);
+        ctx.lineWidth = 1.4;
+        ctx.beginPath();
+        ctx.moveTo(x, y);
+        const sx = x + Math.cos(a) * 52, sy = y + Math.sin(a) * 30 - 26;
+        ctx.quadraticCurveTo(x + Math.cos(a) * 30, y - 40, sx, sy);
+        ctx.stroke();
+        dab(ctx, sx, sy, 2, hsl(40, 70, 40));
+      }
+      dab(ctx, x, y, 5, hsl(352, 80, 36));
+    }
+  },
+
+  rapeseed(ctx, R, v) {
+    const n = v ? 5 : 4;
+    for (let i = 0; i < n; i++) {
+      const x = 64 + (i / (n - 1)) * 128 + (R() - 0.5) * 14, top = 30 + R() * 40;
+      stem(ctx, 128 + (x - 128) * 0.4, 256, x, top + 20, 3, (R() - 0.5) * 16, hsl(95, 30, 40));
+      // a loose cluster of small four-petalled flowers at the top
+      for (let j = 0; j < 14; j++) {
+        const fx = x + (R() - 0.5) * 34, fy = top + R() * 34;
+        for (let q = 0; q < 4; q++) dab(ctx, fx + Math.cos(q * 1.57 + 0.4) * 3, fy + Math.sin(q * 1.57 + 0.4) * 3, 2.8, hsl(54, 92, 54 + R() * 10));
+      }
+      for (let j = 0; j < 4; j++) dab(ctx, x + (R() - 0.5) * 12, top + 36 + R() * 20, 2, hsl(80, 40, 40));
+    }
+    for (let i = 0; i < 6; i++) leaf(ctx, R, 128 + (R() - 0.5) * 70, 220 + R() * 30, -Math.PI / 2 + (R() - 0.5) * 2, 44, 16, 140, 20, 40, 'round');
+  },
+
+  forgetMeNots(ctx, R, v) {
+    // a low cushion of leaves almost hidden under a haze of tiny flowers
+    for (let i = 0; i < 4; i++) leaf(ctx, R, 128 + (R() - 0.5) * 100, 250, -Math.PI / 2 + (R() - 0.5) * 2.2, 24, 8, 105, 36, 34, 'round');
+    const n = v ? 100 : 90;
+    for (let i = 0; i < n; i++) {
+      const x = 30 + R() * 196, y = 120 + R() * 126;
+      squash(ctx, x, y, 0.88, () => {
+        radial(ctx, R, x, y, 5, 8, 6, 210, 78, 72 + R() * 8, 'round', { lj: 6 });
+        dab(ctx, x, y, 1.8, hsl(50, 95, 60));
+      });
+    }
   },
 
   violets(ctx, R, v) {
@@ -633,14 +795,14 @@ export function signCanvas(text) {
 // ---------- bouquets, journal pages ----------
 
 export const BOUQUETS = [
-  { name: 'Morning Platform', flowers: ['peonies', 'ranunculus', 'daisies'], paper: '#e9d6c0', ribbon: '#c46a5a', price: '฿2,400', note: 'peonies, ranunculus, field daisies' },
-  { name: 'Window Seat', flowers: ['roses', 'carnations', 'roses'], paper: '#d9c9b6', ribbon: '#7a2232', price: '฿1,900', note: 'garden roses, carnations' },
-  { name: 'Last Light', flowers: ['sunflowers', 'chrysanthemums', 'dahlias'], paper: '#c8a57c', ribbon: '#3f5d48', price: '฿2,200', note: 'sunflowers, mums, dahlias' },
-  { name: 'Night Train', flowers: ['irises', 'hydrangeas', 'violets'], paper: '#2f3550', ribbon: '#d8c08a', price: '฿2,600', note: 'irises, hydrangea, violets' },
-  { name: 'Passing Orchard', flowers: ['tulips', 'azaleas', 'tulips'], paper: '#f0e2d6', ribbon: '#e08a3a', price: '฿1,800', note: 'tulips, azaleas' },
-  { name: 'Sleeper Car', flowers: ['lilies', 'orchids', 'begonias'], paper: '#e6e0ec', ribbon: '#8a6aa8', price: '฿3,200', note: 'lilies, orchids, begonias' },
-  { name: 'Slow Rain', flowers: ['hydrangeas', 'begonias', 'daisies'], paper: '#c9d6d8', ribbon: '#5a7a8a', price: '฿2,100', note: 'hydrangea, begonias, daisies' },
-  { name: 'The Long Way Home', flowers: ['daisies', 'ranunculus', 'chrysanthemums', 'violets'], paper: '#d8cdb0', ribbon: '#a0583a', price: '฿2,000', note: 'whatever the fields gave us' },
+  { name: 'Morning Platform', flowers: ['ranunculus', 'cosmos', 'daisies'], paper: '#e9d6c0', ribbon: '#c46a5a', price: '฿2,400', note: 'ranunculus, cosmos, field daisies' },
+  { name: 'Window Seat', flowers: ['poppies', 'anemones', 'poppies'], paper: '#d9c9b6', ribbon: '#7a2232', price: '฿1,900', note: 'poppies, anemones' },
+  { name: 'Last Light', flowers: ['sunflowers', 'marigolds', 'rapeseed'], paper: '#c8a57c', ribbon: '#3f5d48', price: '฿2,200', note: 'sunflowers, marigolds' },
+  { name: 'Night Train', flowers: ['irises', 'delphiniums', 'forgetMeNots'], paper: '#2f3550', ribbon: '#d8c08a', price: '฿2,600', note: 'irises, delphiniums, forget-me-nots' },
+  { name: 'Passing Orchard', flowers: ['tulips', 'lavender', 'tulips'], paper: '#f0e2d6', ribbon: '#8a6aa8', price: '฿1,800', note: 'lilac tulips, lavender' },
+  { name: 'Sleeper Car', flowers: ['spiderLilies', 'dahlias', 'anemones'], paper: '#e6e0ec', ribbon: '#8a2a4a', price: '฿3,200', note: 'spider lilies, dahlias' },
+  { name: 'Slow Rain', flowers: ['hydrangeas', 'forgetMeNots', 'daisies'], paper: '#c9d6d8', ribbon: '#5a7a8a', price: '฿2,100', note: 'hydrangea, forget-me-nots' },
+  { name: 'The Long Way Home', flowers: ['daisies', 'ranunculus', 'lavender', 'cosmos'], paper: '#d8cdb0', ribbon: '#a0583a', price: '฿2,000', note: 'whatever the fields gave us' },
 ];
 
 const keyIndex = (k) => FLOWERS.findIndex((f) => f.key === k);

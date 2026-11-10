@@ -4,6 +4,7 @@ import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 import { FLOWERS, COLS, ROWS, rng, buildAtlas, brushCanvas, paperCanvas, grainCanvas, signCanvas, buildPages, cellRect } from './paint.js';
 import { computeEnv, rollWeather, WEATHERS } from './env.js';
 import * as UI from './ui.js';
+import { PLACES, buildPlace, placesNight } from './places.js';
 
 await Promise.all([
   document.fonts.load('64px "Pinyon Script"'),
@@ -22,20 +23,12 @@ const GROUND_Y = -0.9; // the fields lie below the embankment the line runs on
 const L = 440, GAP = 3.5, PERIOD = L * 16, WRAP = PERIOD * 16;
 const FIELD_END = Array(16).fill(L - GAP - 2); // fields run end to end, a path between each
 const COUNTRY = [1, 0, 2, 1, 0, 1, 2, 0, 1, 2, 0, 1, 0, 2, 1, 0]; // 0 meadow, 1 rice paddy, 2 ploughed
-// Each field gets a landscape and light that suit the flower: orange
-// ranunculus on sea cliffs, blue hydrangeas by a lake, violets in a wood,
-// pink carnations on soft hills, dahlias at the edge of a city.
-//                 roses      peonies  carnations begonias daisies    hydrangeas orchids    lilies
-const THEMES = ['village', 'japan', 'hills', 'town', 'pasture', 'lake', 'seaside', 'river',
-//  chrysanth. ranunculus dahlias tulips       irises       azaleas  sunflowers violets
-  'japan', 'coast', 'city', 'windmills', 'mountains', 'hills', 'farm', 'forest'];
-const STREET = THEMES.map((t) => (t === 'town' || t === 'japan' || t === 'city' ? 1 : 0));
-const WATER = THEMES.map((t) => (t === 'coast' || t === 'seaside' ? 1 : t === 'lake' ? 2 : 0));
-// sky and haze tint per field, and how strongly
-const GRADE = [
-  ['#ffd8c8', 0.25], ['#ffd6e4', 0.35], ['#ffc8dc', 0.45], ['#ffe0e6', 0.2], ['#ffffff', 0], ['#c4d8ff', 0.35], ['#e2f2ff', 0.2], ['#ffdce8', 0.25],
-  ['#ffd6e4', 0.3], ['#ffd8b0', 0.35], ['#e6d0ff', 0.3], ['#ffdcb8', 0.3], ['#d0d4ff', 0.3], ['#ffd0e4', 0.4], ['#ffe4b0', 0.35], ['#d0c8ff', 0.4],
-].map(([c, k]) => new THREE.Color(1, 1, 1).lerp(new THREE.Color(c), k));
+// Each field has a place behind it, chosen to suit the flower and its
+// colour (see places.js). These tables feed the shaders.
+const WATER = PLACES.map((p) => p.water);
+const GRADE = PLACES.map((p) => new THREE.Color(1, 1, 1).lerp(new THREE.Color(p.grade[0]), p.grade[1]));
+const MIST = PLACES.map((p) => p.mist);
+const linear = (c) => new THREE.Color(c);
 const LAMP = { sp: 32, off: 12, z: -5.5 };
 const POLE = { sp: 48, off: 30, z: -1.9 };
 const SPEED = 10;
@@ -100,13 +93,28 @@ const U = {
   uLampCol: { value: new THREE.Color('#ffb066') },
   uLampSp: { value: LAMP.sp }, uLampOff: { value: LAMP.off }, uLampZ: { value: LAMP.z },
   uL: { value: L }, uGap: { value: GAP }, uGroundY: { value: GROUND_Y },
-  uFEnd: { value: FIELD_END }, uCountry: { value: COUNTRY }, uWater: { value: WATER }, uStreet: { value: STREET },
+  uFEnd: { value: FIELD_END }, uCountry: { value: COUNTRY }, uWater: { value: WATER },
+  uFarCol: { value: PLACES.map((p) => linear(p.far)) }, uHillCol: { value: PLACES.map((p) => linear(p.hill)) },
+  uWaterCol: { value: PLACES.map((p) => linear(p.waterCol)) }, uRiseK: { value: PLACES.map((p) => p.rise) },
+  uPeakK: { value: PLACES.map((p) => p.peaks) }, uShore: { value: PLACES.map((p) => p.shore) },
 };
 
 const GLSL_COMMON = /* glsl */`
 uniform float uTravel, uTime, uNight, uFogNear, uFogFar, uLampSp, uLampOff, uLampZ, uL, uGap, uGroundY, uWind, uRain;
 uniform vec3 uSunCol, uAmb, uSunDir, uFogCol, uLampCol;
-uniform float uFEnd[16], uCountry[16], uCloudShade, uWater[16], uStreet[16];
+uniform float uFEnd[16], uCountry[16], uCloudShade, uWater[16], uRiseK[16], uPeakK[16], uShore[16];
+uniform vec3 uFarCol[16], uHillCol[16], uWaterCol[16];
+// a per-place value at this point of the line, eased across the joins
+float segF(float a[16], float tx, float wid){
+  float fi = floor(tx/uL), local = tx - fi*uL;
+  float p = a[int(mod(fi - 1., 16.))], c = a[int(mod(fi, 16.))], n = a[int(mod(fi + 1., 16.))];
+  return mix(mix(p, c, smoothstep(-wid, wid, local)), n, smoothstep(uL - wid, uL + wid, local));
+}
+vec3 segV3(vec3 a[16], float tx, float wid){
+  float fi = floor(tx/uL), local = tx - fi*uL;
+  vec3 p = a[int(mod(fi - 1., 16.))], c = a[int(mod(fi, 16.))], n = a[int(mod(fi + 1., 16.))];
+  return mix(mix(p, c, smoothstep(-wid, wid, local)), n, smoothstep(uL - wid, uL + wid, local));
+}
 float hash12(vec2 p){ vec3 p3 = fract(vec3(p.xyx) * .1031); p3 += dot(p3, p3.yzx + 33.33); return fract((p3.x + p3.y) * p3.z); }
 float vnoise(vec2 p){ vec2 i = floor(p), f = fract(p); vec2 u = f*f*(3.-2.*f);
   return mix(mix(hash12(i), hash12(i+vec2(1,0)), u.x), mix(hash12(i+vec2(0,1)), hash12(i+vec2(1,1)), u.x), u.y); }
@@ -124,14 +132,14 @@ float waterW(float tx, float kind, float wid){
 float shoreZ(float tx){
   float local = tx - floor(tx/uL)*uL;
   float head = smoothstep(230., 270., local) * smoothstep(350., 310., local);
-  return -46. - 5.*fbm(vec2(tx*.03, 7.)) - 44.*head;
+  return -segF(uShore, tx, 40.) - 5.*fbm(vec2(tx*.03, 7.)) - 44.*head;
 }
 // Beyond the flowers the land rises into hills, so farms, lakes and villages
 // show over the field. Flat where there is water. Mirrored by riseAt() in JS.
 float riseAt(float tx, float z){
   float lake = waterW(tx, 2., 60.), sea = waterW(tx, 1., 60.);
   float R = max(2., 7. + 5.*sin(tx*.0047) + 3.*sin(tx*.013 + 1.3));
-  return R * smoothstep(-44., -154., z) * (1. - max(sea, lake));
+  return R * segF(uRiseK, tx, 80.) * smoothstep(-44., -154., z) * (1. - max(sea, lake));
 }
 vec3 lampLight(float tx, float z, float y){
   float lx = floor((tx - uLampOff)/uLampSp + .5)*uLampSp + uLampOff;
@@ -185,15 +193,15 @@ sky.renderOrder = -10;
 scene.add(sky);
 
 // ---------- distant hills ----------
-function hillLayer(z, base, amp, freq, color, haze, bumpy, seed, peak = 0, seaKeep = 0, overLake = 0) {
+function hillLayer(z, base, amp, freq, shade, haze, bumpy, seed, peak = 0, seaKeep = 0, overLake = 0) {
   const m = new THREE.Mesh(
     new THREE.PlaneGeometry(2400, 420),
     new THREE.ShaderMaterial({
       fog: false,
-      uniforms: { ...U, uBase: { value: base }, uAmp: { value: amp }, uFreq: { value: freq }, uColor: { value: new THREE.Color(color) }, uHaze: { value: haze }, uBumpy: { value: bumpy }, uSeed: { value: seed }, uPeak: { value: peak }, uSeaKeep: { value: seaKeep }, uOverLake: { value: overLake } },
+      uniforms: { ...U, uBase: { value: base }, uAmp: { value: amp }, uFreq: { value: freq }, uShade: { value: shade }, uHaze: { value: haze }, uBumpy: { value: bumpy }, uSeed: { value: seed }, uPeak: { value: peak }, uSeaKeep: { value: seaKeep }, uOverLake: { value: overLake } },
       vertexShader: `varying vec3 vW; void main(){ vec4 w = modelMatrix*vec4(position,1.); vW = w.xyz; gl_Position = projectionMatrix*viewMatrix*w; }`,
       fragmentShader: GLSL_COMMON + /* glsl */`
-        uniform float uBase, uAmp, uFreq, uHaze, uBumpy, uSeed, uPeak, uSeaKeep, uOverLake; uniform vec3 uColor;
+        uniform float uBase, uAmp, uFreq, uHaze, uBumpy, uSeed, uPeak, uSeaKeep, uOverLake, uShade;
         varying vec3 vW;
         void main(){
           float tx = vW.x + uTravel;
@@ -208,7 +216,8 @@ function hillLayer(z, base, amp, freq, color, haze, bumpy, seed, peak = 0, seaKe
             float warp = fbm(vec2(tx*.0012, 9.));
             float m = fbm(vec2(tx*uFreq*1.1 + warp*2.5 + uSeed, 5.));
             m = smoothstep(.25, .85, m);
-            h += uPeak * range * (m*m*(3. - 2.*m)) + uPeak*.08*range*vnoise(vec2(tx*.03, 2.));
+            float pk = uPeak * segF(uPeakK, tx, 200.);
+            h += pk * range * (m*m*(3. - 2.*m)) + pk*.08*range*vnoise(vec2(tx*.03, 2.));
           }
           // over the sea the land falls away, leaving only distant headlands
           float sw = waterW(tx, 1., 160.);
@@ -217,7 +226,7 @@ function hillLayer(z, base, amp, freq, color, haze, bumpy, seed, peak = 0, seaKe
           if (vW.y > h) discard;
           float rim = smoothstep(h - 3., h, vW.y);
           float n = vnoise(vec2(tx*uFreq*25., vW.y*.35));
-          vec3 c = uColor * (uAmb + uSunCol*.55) * (.82 + .22*rim + .16*n);
+          vec3 c = segV3(uHillCol, tx, 160.) * uShade * (uAmb + uSunCol*.55) * (.82 + .22*rim + .16*n);
           if (uPeak > 0.) {
             // rocky streaks, lit faces, then snow above the line
             float streak = vnoise(vec2(tx*.05, vW.y*.03));
@@ -238,10 +247,10 @@ function hillLayer(z, base, amp, freq, color, haze, bumpy, seed, peak = 0, seaKe
   scene.add(m);
   return m;
 }
-hillLayer(-640, GROUND_Y + 10, 30, 0.002, '#7489b0', 0.4, 0, 5.3, 120, 0.35, 1);
-hillLayer(-560, GROUND_Y + 40, 70, 0.0025, '#6f86a8', 0.55, 0, 3.1, 0, 0, 1);
-hillLayer(-330, GROUND_Y + 14, 36, 0.005, '#4f6a6a', 0.35, 0, 8.7);
-hillLayer(-150, GROUND_Y + 12, 6, 0.02, '#2f4a2a', 0.18, 1, 1.3);
+hillLayer(-640, GROUND_Y + 10, 30, 0.002, 1.2, 0.4, 0, 5.3, 130, 0.35, 1);
+hillLayer(-560, GROUND_Y + 40, 70, 0.0025, 1.05, 0.55, 0, 3.1, 0, 0, 1);
+hillLayer(-330, GROUND_Y + 14, 36, 0.005, 0.8, 0.35, 0, 8.7);
+hillLayer(-150, GROUND_Y + 12, 6, 0.02, 0.6, 0.18, 1, 1.3);
 
 // ---------- ground ----------
 const ground = new THREE.Mesh(
@@ -289,18 +298,9 @@ const ground = new THREE.Mesh(
           cc = mix(cc, sp > .5 ? vec3(.9,.85,.6) : vec3(.8,.5,.6), step(.985, sp) * smoothstep(-25., -6., z));
         }
         col = mix(col, cc, bed*country);
-        float far = smoothstep(-58., -80., z);
-        float h = hash12(floor(vec2(tx/48., z/26.)));
-        vec3 patchC = h < .22 ? vec3(.45,.4,.1) : h < .5 ? vec3(.15,.23,.07) : h < .68 ? vec3(.3,.27,.12) : h < .85 ? vec3(.22,.3,.1) : vec3(.34,.24,.14);
-        col = mix(col, patchC*(.8+.4*n1), far*.7);
-        // a road with a dashed centre line just past the field
-        if (uStreet[t] > .5 && z < -43.5 && z > -53.) {
-          col = vec3(.62,.6,.56);
-          if (z < -44.5 && z > -51.5) {
-            col = vec3(.24,.24,.26)*(.9 + .2*n2);
-            if (abs(z + 48.) < .12 && fract(tx/6.) < .5) col = vec3(.9,.88,.8);
-          }
-        }
+        // beyond the flowers the ground takes the place's own colour
+        vec3 farC = segV3(uFarCol, tx, 60.) * (.82 + .3*n1) * (.92 + .16*n2);
+        col = mix(col, farC, smoothstep(-40., -50., z));
         // sea or a wide lake beyond the shore
         float sea = waterW(tx, 1., 40.), lake = waterW(tx, 2., 40.);
         float zs = shoreZ(tx);
@@ -310,13 +310,15 @@ const ground = new THREE.Mesh(
           float s = smoothstep(zs + .5, zs - .5, z);
           col = mix(col, vec3(.55,.5,.4)*(.8+.4*n2), sea*smoothstep(zs + 4., zs + 1., z)*(1. - s));
           wet = sea*s;
-          wcol = mix(vec3(.04,.2,.38), vec3(.12,.32,.5), smoothstep(-60., -300., z));
+          vec3 wc = segV3(uWaterCol, tx, 60.);
+          wcol = mix(wc*.75, wc*1.15 + .03, smoothstep(-60., -300., z));
         }
         if (lake > 0.) {
           float s = smoothstep(zs + .5, zs - .5, z);
           col = mix(col, vec3(.3,.36,.16)*(.8+.4*n2), lake*smoothstep(zs + 4., zs + 1., z)*(1. - s)); // reedy bank
           wet = max(wet, lake*s);
-          wcol = mix(wcol, mix(vec3(.08,.3,.42), vec3(.2,.42,.52), smoothstep(-60., -300., z)), lake);
+          vec3 lc = segV3(uWaterCol, tx, 60.);
+          wcol = mix(wcol, mix(lc*.8, lc*1.1 + .03, smoothstep(-60., -300., z)), lake);
         }
         if (wet > 0.) {
           // ripples and glints of sky
@@ -384,7 +386,7 @@ function buildFlowerField() {
         bool country = local > fEnd + .8 + uGap && !band;
         bool isF = aKind < .5 && !country;
         float far = max(0., -aBase.y - 6.) / 40.;
-        float h = isF ? uHeights[t]*(.9 + .2*aRand.y) : (.28 + .32*aRand.y);
+        float h = isF ? uHeights[t]*(.9 + .2*aRand.y) : (.28 + .32*aRand.y) * clamp(uHeights[t] / .6, .35, 1.); // grass stays below short flowers
         h *= 1. + far*(isF ? .3 : 1.3);
         float edge = band ? local - uGap : min(local - uGap, fEnd - local);
         if (isF && (edge < 0. || fract(aRand.w*7.3)*6. > edge)) h = 0.;
@@ -1335,191 +1337,11 @@ function addWindmill(g, R, x, z, spinners) {
   g.add(m);
 }
 
-function addCow(g, R, x, z) {
-  const c = new THREE.Group();
-  const coat = pick(MAT.cows, R);
-  const body = new THREE.Mesh(G.box, coat);
-  body.scale.set(2.1, 0.95, 0.85);
-  body.position.y = 0.75;
-  const head = new THREE.Mesh(G.box, coat);
-  head.scale.set(0.55, 0.5, 0.42);
-  head.position.set(1.25, R() < 0.5 ? 0.55 : 1.35, 0); // grazing or looking up
-  c.add(body, head);
-  for (const [lx, lz] of [[-0.8, -0.3], [-0.8, 0.3], [0.8, -0.3], [0.8, 0.3]]) {
-    const l = new THREE.Mesh(G.leg, MAT.hoof);
-    l.scale.set(0.16, 0.78, 0.16);
-    l.position.set(lx, 0.78, lz);
-    c.add(l);
-  }
-  c.position.set(x, GROUND_Y, z);
-  c.rotation.y = R() * 6.28;
-  g.add(c);
-}
-
-function addSheep(g, R, x, z) {
-  const sh = new THREE.Group();
-  const body = new THREE.Mesh(G.crown, MAT.wool);
-  body.scale.set(0.75, 0.5, 0.48);
-  body.position.y = 0.72;
-  const head = new THREE.Mesh(G.box, MAT.hoof);
-  head.scale.set(0.3, 0.3, 0.24);
-  head.position.set(0.72, R() < 0.6 ? 0.45 : 0.85, 0);
-  sh.add(body, head);
-  for (const [lx, lz] of [[-0.35, -0.2], [-0.35, 0.2], [0.35, -0.2], [0.35, 0.2]]) {
-    const l = new THREE.Mesh(G.leg, MAT.hoof);
-    l.scale.set(0.08, 0.42, 0.08);
-    l.position.set(lx, 0.42, lz);
-    sh.add(l);
-  }
-  sh.position.set(x, GROUND_Y, z);
-  sh.rotation.y = R() * 6.28;
-  g.add(sh);
-}
-
-function addFence(g, x0, x1, z) {
-  for (const y of [0.55, 1]) {
-    const rail = new THREE.Mesh(G.box, MAT.fence);
-    rail.scale.set(x1 - x0, 0.07, 0.06);
-    rail.position.set((x0 + x1) / 2, GROUND_Y + y, z);
-    g.add(rail);
-  }
-  for (let x = x0; x <= x1; x += 5) {
-    const p = new THREE.Mesh(G.box, MAT.fence);
-    p.scale.set(0.12, 1.2, 0.12);
-    p.position.set(x, GROUND_Y, z);
-    g.add(p);
-  }
-}
-
-function addPasture(g, R, x0, x1, n) {
-  addFence(g, x0, x1, -43);
-  for (let i = 0; i < n; i++) {
-    const x = x0 + R() * (x1 - x0), z = -(46 + R() * 24);
-    if (R() < 0.55) addSheep(g, R, x, z); else addCow(g, R, x, z);
-  }
-}
-
-function addRiver(g, R, x0, x1) {
-  const w = new THREE.Mesh(G.plane, MAT.water);
-  w.rotation.x = -Math.PI / 2;
-  w.scale.set(x1 - x0, 9, 1);
-  w.position.set((x0 + x1) / 2, GROUND_Y + 0.04, -55);
-  g.add(w);
-  // a stone bridge carrying a lane over it
-  const bx = x0 + (x1 - x0) * (0.3 + R() * 0.4);
-  const deck = new THREE.Mesh(G.box, MAT.stone);
-  deck.scale.set(4, 0.5, 14);
-  deck.position.set(bx, GROUND_Y + 1.6, -55);
-  g.add(deck);
-  for (const pz of [-52, -58]) {
-    const pier = new THREE.Mesh(G.box, MAT.stone);
-    pier.scale.set(3.2, 1.7, 1.2);
-    pier.position.set(bx, GROUND_Y, pz);
-    g.add(pier);
-  }
-  for (const s of [-1, 1]) {
-    const wall = new THREE.Mesh(G.box, MAT.stone);
-    wall.scale.set(0.3, 0.6, 14);
-    wall.position.set(bx + s * 1.85, GROUND_Y + 2.1, -55);
-    g.add(wall);
-  }
-  // willows and alders along both banks
-  for (let x = x0 + R() * 10; x < x1; x += 8 + R() * 18) {
-    if (Math.abs(x - bx) < 6) continue;
-    addTree(g, R, x, -(49.5 + R() * 1.5), 0.8 + R() * 0.4);
-    if (R() < 0.6) addTree(g, R, x + R() * 6, -(61 + R() * 3), 0.9 + R() * 0.4);
-  }
-}
-
-function addJapaneseHouse(g, R, x, z) {
-  const w = 5 + R() * 3, d = 4 + R() * 2, h = 2.6 + R() * 0.8;
-  const hg = new THREE.Group();
-  const body = new THREE.Mesh(G.box, MAT.jwall);
-  body.scale.set(w, h, d);
-  const roof = new THREE.Mesh(G.hip, MAT.jroof);
-  roof.scale.set((w + 1.6) / 1.06, 2.6 + R(), (d + 1.6) / 1.06);
-  roof.position.y = h;
-  hg.add(body, roof);
-  for (let i = 0; i < 3; i++) {
-    const p = new THREE.Mesh(G.plane, MAT.win);
-    p.scale.set(w / 4.5, h * 0.45, 1);
-    p.position.set(-w / 2 + (i + 0.5) * (w / 3), h * 0.45, d / 2 + 0.02);
-    hg.add(p);
-  }
-  hg.position.set(x, GROUND_Y, z);
-  hg.rotation.y = (R() - 0.5) * 0.2;
-  g.add(hg);
-}
-
-function addPagoda(g, R, x, z) {
-  const p = new THREE.Group();
-  let y = 0, w = 4.4;
-  for (let i = 0; i < 5; i++) {
-    const body = new THREE.Mesh(G.box, i === 0 ? MAT.vermilion : MAT.jwall);
-    body.scale.set(w, 2, w);
-    body.position.y = y;
-    const roof = new THREE.Mesh(G.hip, MAT.jroof);
-    roof.scale.set((w + 2.6) / 1.06, 1.8, (w + 2.6) / 1.06);
-    roof.position.y = y + 2;
-    p.add(body, roof);
-    y += 2.75; w *= 0.82;
-  }
-  const spire = new THREE.Mesh(G.trunk, MAT.hoof);
-  spire.scale.set(0.6, 3.5, 0.6);
-  spire.position.y = y - 0.2;
-  p.add(spire);
-  p.position.set(x, GROUND_Y, z);
-  g.add(p);
-}
-
-function addTorii(g, x, z) {
-  const t = new THREE.Group();
-  for (const s of [-1, 1]) {
-    const post = new THREE.Mesh(G.trunk, MAT.vermilion);
-    post.scale.set(2, 5, 2);
-    post.position.x = s * 2;
-    t.add(post);
-  }
-  const top = new THREE.Mesh(G.box, MAT.vermilion);
-  top.scale.set(6.4, 0.4, 0.5);
-  top.position.y = 5;
-  const tie = new THREE.Mesh(G.box, MAT.vermilion);
-  tie.scale.set(5, 0.25, 0.3);
-  tie.position.y = 4.1;
-  const cap = new THREE.Mesh(G.box, MAT.jroof);
-  cap.scale.set(7, 0.25, 0.7);
-  cap.position.y = 5.35;
-  t.add(top, tie, cap);
-  t.position.set(x, GROUND_Y, z);
-  g.add(t);
-}
-
-function addChurch(g, R, x, z) {
-  const c = new THREE.Group();
-  const nave = new THREE.Mesh(G.box, MAT.walls[0]);
-  nave.scale.set(9, 5, 5);
-  const roof = new THREE.Mesh(G.roof, MAT.roofs[2]);
-  roof.rotation.y = Math.PI / 2;
-  roof.scale.set(5.6, 6, 9.4);
-  roof.position.y = 5;
-  const tower = new THREE.Mesh(G.box, MAT.walls[0]);
-  tower.scale.set(3, 11, 3);
-  tower.position.x = -5;
-  const st = new THREE.Mesh(G.steeple, MAT.roofs[2]);
-  st.scale.set(1.2, 1.5, 1.2);
-  st.position.set(-5, 11, 0);
-  st.rotation.y = Math.PI / 4;
-  c.add(nave, roof, tower, st);
-  c.position.set(x, GROUND_Y, z);
-  c.rotation.y = (R() - 0.5) * 0.3;
-  g.add(c);
-}
-
-function addLighthouse(g, x, z) {
+function addLighthouse(g, x, z, white = false) {
   const l = new THREE.Group();
   const tower = new THREE.Mesh(G.tower, MAT.mill);
   tower.scale.set(0.9, 2.2, 0.9);
-  const band = new THREE.Mesh(G.trunk, MAT.vermilion);
+  const band = new THREE.Mesh(G.trunk, white ? MAT.mill : MAT.vermilion);
   band.scale.set(9, 2.2, 9);
   band.position.y = 8;
   const lamp = new THREE.Mesh(G.box, MAT.win);
@@ -1533,244 +1355,14 @@ function addLighthouse(g, x, z) {
   g.add(l);
 }
 
-function addCar(g, R, x, z) {
-  const c = new THREE.Group();
-  const paint = new THREE.MeshStandardMaterial({ color: pick(['#c8d4dc', '#e9e6e0', '#b8423a', '#3a5a8a', '#2e2e34', '#d9b24a'], R), roughness: 0.4 });
-  const body = new THREE.Mesh(G.box, paint);
-  body.scale.set(4, 0.8, 1.75);
-  body.position.y = 0.3;
-  const cab = new THREE.Mesh(G.box, MAT.hoof);
-  cab.scale.set(2.1, 0.65, 1.6);
-  cab.position.set(-0.2, 1.1, 0);
-  c.add(body, cab);
-  c.position.set(x, GROUND_Y, z);
-  c.rotation.y = R() < 0.5 ? 0 : Math.PI / 2;
-  g.add(c);
-}
-
-// a corner convenience store: white box, coloured bands, a lit sign and a
-// glass front that glows at night
-const STORE = {
-  glass: new THREE.MeshStandardMaterial({ color: '#9fb8c4', emissive: '#fff2d8', emissiveIntensity: 0, roughness: 0.2 }),
-  bands: ['#2f9a5a', '#e8822e', '#2f6fc4'].map((c) => new THREE.MeshStandardMaterial({ color: c, roughness: 0.6 })),
-};
-function addStore(g, R, x, z) {
-  const s = new THREE.Group();
-  const body = new THREE.Mesh(G.box, MAT.walls[3]);
-  body.scale.set(12, 4, 9);
-  const front = new THREE.Mesh(G.plane, STORE.glass);
-  front.scale.set(9, 2.2, 1);
-  front.position.set(-0.8, 1.3, 4.52);
-  s.add(body, front);
-  STORE.bands.forEach((m, i) => {
-    const b = new THREE.Mesh(G.box, m);
-    b.scale.set(12.05, 0.28, 9.05);
-    b.position.y = 2.75 + i * 0.3;
-    s.add(b);
-  });
-  const sign = new THREE.Mesh(G.box, STORE.glass);
-  sign.scale.set(1.4, 1.4, 0.3);
-  sign.position.set(8, 4.2, 3);
-  const post = new THREE.Mesh(G.box, MAT.hoof);
-  post.scale.set(0.2, 4.2, 0.2);
-  post.position.set(8, 0, 3);
-  s.add(sign, post);
-  // vending machines by the door
-  for (let i = 0; i < 2; i++) {
-    const v = new THREE.Mesh(G.box, i ? STORE.bands[2] : MAT.walls[3]);
-    v.scale.set(0.9, 1.8, 0.7);
-    v.position.set(4.6 + i, 0, 5);
-    s.add(v);
-  }
-  s.position.set(x, GROUND_Y, z);
-  g.add(s);
-}
-
-function addUtilityPoles(g, x0, x1, z) {
-  let prev = null;
-  for (let x = x0; x <= x1; x += 32) {
-    const p = new THREE.Mesh(G.trunk, MAT.stone);
-    p.scale.set(1.3, 8, 1.3);
-    p.position.set(x, GROUND_Y, z);
-    const arm = new THREE.Mesh(G.box, MAT.hoof);
-    arm.scale.set(0.12, 0.12, 1.6);
-    arm.position.set(x, GROUND_Y + 7.4, z);
-    g.add(p, arm);
-    if (prev != null) for (const dz of [-0.6, 0.6]) {
-      const w = new THREE.Mesh(G.box, MAT.hoof);
-      w.scale.set(x - prev, 0.03, 0.03);
-      w.position.set((x + prev) / 2, GROUND_Y + 7.25, z + dz);
-      g.add(w);
-    }
-    prev = x;
-  }
-}
-
-// a road behind the field: poles and wires, a convenience store, cars, and a
-// row of small houses facing it
-function addStreet(g, R, theme) {
-  addUtilityPoles(g, 2, L - 2, -43);
-  const storeAt = 60 + R() * (L - 120);
-  addStore(g, R, storeAt, -58.5);
-  for (let x = 4 + R() * 6; x < L - 6; x += 9 + R() * 6) {
-    if (Math.abs(x - storeAt) < 11) continue;
-    if (theme === 'japan') addJapaneseHouse(g, R, x, -57 - R() * 3);
-    else addHouse(g, R, x, -57 - R() * 3, { h: 3 + R() * 1.6, rot: 0 });
-  }
-  for (let i = 0; i < 7; i++) addCar(g, R, R() * L, R() < 0.5 ? -46.5 : -49.6);
-}
+const placeKit = { THREE, L, GROUND_Y, painted, G, MAT, addHouse, addTree, addLighthouse };
 
 function spawnField(k) {
   const g = new THREE.Group();
   const R = rng(k * 7919 + 13);
   const t16 = ((k % 16) + 16) % 16;
-  const theme = THEMES[t16];
-  const fEnd = FIELD_END[t16];
   const spinners = [];
-  const zr = (a, b) => -(a + R() * (b - a));
-  const xr = (a, b) => a + R() * (b - a);
-  const bale = (x, z) => {
-    const b = new THREE.Mesh(G.bale, MAT.bale);
-    b.scale.setScalar(0.9 + R() * 0.3);
-    b.position.set(x, GROUND_Y + 0.55, z);
-    b.rotation.y = R() * 3;
-    g.add(b);
-  };
-  // Villages and farmsteads gather in clusters, the way they do from a train,
-  // with scattered trees and the odd house between them.
-  const cx = xr(60, L - 60);
-  switch (theme) {
-    case 'farm': {
-      addHouse(g, R, cx, zr(58, 70), { wall: MAT.walls[3], roof: MAT.roofs[0], ridgeX: true });
-      for (let i = 0; i < 6; i++) addCow(g, R, cx + xr(30, 110), zr(50, 66));
-      addHouse(g, R, cx - xr(10, 18), zr(68, 80), { wall: MAT.barn, roof: MAT.roofs[2], w: 7, d: 6, h: 4.5, ridgeX: false });
-      for (let i = 0; i < 14; i++) bale(cx + xr(-60, 60), zr(50, 64));
-      for (let i = 0; i < 18; i++) addTree(g, R, xr(0, L), zr(60, 90), 1 + R() * 0.4);
-      break;
-    }
-    case 'village': {
-      const n = 9 + Math.floor(R() * 5);
-      for (let i = 0; i < n; i++) addHouse(g, R, cx + (i / n - 0.5) * 110 + xr(-4, 4), zr(56, 82));
-      if (R() < 0.7) {
-        const c = new THREE.Group();
-        const body = new THREE.Mesh(G.box, MAT.walls[0]);
-        body.scale.set(3, 7, 3);
-        const st = new THREE.Mesh(G.steeple, MAT.roofs[2]);
-        st.position.y = 7;
-        st.rotation.y = Math.PI / 4;
-        c.add(body, st);
-        c.position.set(cx + xr(-30, 30), GROUND_Y, zr(80, 90));
-        g.add(c);
-      }
-      for (let i = 0; i < 3; i++) addHouse(g, R, xr(0, L), zr(60, 85));
-      for (let i = 0; i < 20; i++) addTree(g, R, xr(0, L), zr(54, 92), 0.9 + R() * 0.5, R() < 0.3);
-      break;
-    }
-    case 'windmills': {
-      const n = 4 + Math.floor(R() * 3);
-      for (let i = 0; i < n; i++) addWindmill(g, R, (i + 0.3 + R() * 0.4) * (L / n), zr(60, 85), spinners);
-      addHouse(g, R, cx, zr(55, 65));
-      for (let i = 0; i < 12; i++) addTree(g, R, xr(0, L), zr(55, 90), 1);
-      break;
-    }
-    case 'forest': {
-      for (let i = 0; i < 110; i++) addTree(g, R, xr(0, L), zr(46, 92), 1 + R() * 0.7, R() < 0.25);
-      for (let i = 0; i < 14; i++) addTree(g, R, xr(0, L), zr(55, 92), 1 + R() * 0.5);
-      break;
-    }
-    case 'lake': {
-      for (let i = 0; i < 4; i++) addHouse(g, R, 290 + xr(-35, 35), zr(55, 82), { w: 4, d: 3, h: 2.6, wall: pick([MAT.barn, MAT.walls[3]], R) });
-      for (let i = 0; i < 12; i++) addTree(g, R, 290 + xr(-40, 40), zr(50, 86), 0.9 + R() * 0.4, R() < 0.5, R() < 0.5 ? MAT.pine : null);
-      break;
-    }
-    case 'town': {
-      // a market town: tall terraced houses packed along the hillside
-      for (let i = 0; i < 26; i++) {
-        const x = cx + (i / 26 - 0.5) * 170 + xr(-2, 2);
-        addHouse(g, R, x, zr(58, 86), { h: 3.4 + R() * 2.2, w: 4.5 + R() * 3 });
-      }
-      addChurch(g, R, cx + xr(-40, 40), zr(80, 88));
-      for (let i = 0; i < 10; i++) addTree(g, R, xr(0, L), zr(55, 92), 1);
-      break;
-    }
-    case 'pasture': {
-      addPasture(g, R, cx - 110, cx + 110, 22);
-      addHouse(g, R, cx + xr(-30, 30), zr(72, 82), { wall: MAT.barn, roof: MAT.roofs[2], w: 7, d: 6, h: 4.5, ridgeX: false });
-      for (let i = 0; i < 14; i++) addTree(g, R, xr(0, L), zr(74, 95), 1 + R() * 0.4);
-      break;
-    }
-    case 'river': {
-      addRiver(g, R, 0, L);
-      for (let i = 0; i < 7; i++) addHouse(g, R, cx + (i / 7 - 0.5) * 80, zr(66, 80));
-      for (let i = 0; i < 16; i++) addTree(g, R, xr(0, L), zr(68, 95), 1 + R() * 0.4, R() < 0.3);
-      break;
-    }
-    case 'mountains': {
-      // a valley floor: dark pines, a few chalets, cows on the slopes
-      for (let i = 0; i < 50; i++) addTree(g, R, xr(0, L), zr(62, 98), 1.1 + R() * 0.6, true, MAT.pine);
-      for (let i = 0; i < 4; i++) addHouse(g, R, xr(20, L - 20), zr(56, 70), { wall: MAT.barn, roof: MAT.roofs[3], h: 3 });
-      addPasture(g, R, cx - 60, cx + 60, 9);
-      break;
-    }
-    case 'japan': {
-      for (let i = 0; i < 8; i++) addJapaneseHouse(g, R, cx + (i / 8 - 0.5) * 120 + xr(-3, 3), zr(58, 78));
-      addPagoda(g, R, cx + xr(-50, 50), zr(84, 90));
-      addTorii(g, cx + xr(-90, 90), zr(52, 56));
-      for (let i = 0; i < 12; i++) addTree(g, R, xr(0, L), zr(55, 92), 0.9 + R() * 0.4, false, R() < 0.45 ? MAT.blossom : MAT.pine);
-      break;
-    }
-    case 'coast':
-    case 'seaside': {
-      // cliff-top land out on the headland; the sea fills the rest
-      const hx = 290;
-      if (theme === 'seaside') {
-        addLighthouse(g, hx + xr(-15, 15), -80);
-        addHouse(g, R, hx + xr(-30, -18), -72, { roof: MAT.roofs[0], wall: MAT.walls[3] });
-      } else {
-        for (let i = 0; i < 5; i++) addHouse(g, R, hx + xr(-35, 35), zr(55, 82), { h: 3, roof: pick(MAT.roofs, R) });
-      }
-      for (let i = 0; i < 6; i++) addTree(g, R, hx + xr(-40, 40), zr(52, 86), 0.8 + R() * 0.3);
-      break;
-    }
-    case 'city': {
-      // an old town of small houses and timber cabins climbing the slope,
-      // gathered round a domed church
-      for (let x = xr(0, 6); x < L; x += xr(6, 11)) {
-        const cabin = R() < 0.35;
-        addHouse(g, R, x, zr(52, 96), cabin
-          ? { wall: MAT.barn, roof: MAT.roofs[3], w: 4 + R() * 2, d: 3.5, h: 2.6 }
-          : { h: 3 + R() * 1.8 });
-      }
-      addChurch(g, R, cx, -88);
-      for (let i = 0; i < 18; i++) addTree(g, R, xr(0, L), zr(50, 96), 0.8 + R() * 0.3);
-      break;
-    }
-    case 'hills':
-    default: {
-      // soft rolling hills rising behind the field
-      for (let i = 0; i < 7; i++) {
-        const m = new THREE.Mesh(G.crown, pick(MAT.greens, R));
-        m.scale.set(xr(40, 80), xr(5, 11), xr(18, 30));
-        m.position.set(xr(0, L), GROUND_Y - 1, zr(85, 130));
-        g.add(m);
-      }
-      for (let i = 0; i < 28; i++) addTree(g, R, xr(0, L), zr(55, 95), 0.9 + R() * 0.6, R() < 0.6);
-      for (let i = 0; i < 3; i++) if (R() < 0.7) addHouse(g, R, xr(0, L), zr(70, 85), { roof: MAT.roofs[0] });
-    }
-  }
-
-  if (STREET[t16]) addStreet(g, R, theme);
-
-  // The open land between fields comes closer to the line: lone trees and
-  // hedgerows in meadows, a farmhouse by the paddies, bales on the stubble.
-  const c0 = fEnd + GAP + 4, c1 = L - 4;
-  const ck = COUNTRY[t16];
-  for (let x = c0 + xr(0, 30); x < c1; x += xr(25, 70)) {
-    if (R() < 0.45) addTree(g, R, x, zr(17, 34), 0.9 + R() * 0.5, R() < 0.2);
-    else if (R() < 0.5) for (let i = 0; i < 4 + R() * 5; i++) addTree(g, R, x + i * xr(2.5, 4), zr(28, 40), 0.8 + R() * 0.3);
-  }
-  if (ck === 1 && R() < 0.8) addHouse(g, R, xr(c0 + 10, c1 - 10), zr(26, 40), { w: 4.5, d: 3.5, h: 2.6 });
-  if (ck === 2) for (let i = 0; i < 8; i++) bale(xr(c0, c1), zr(17, 30));
+  buildPlace(PLACES[t16].name, placeKit, g, R);
 
   // sit everything on the rising ground
   for (const c of g.children) c.position.y += riseAt(k * L + c.position.x, c.position.z);
@@ -1787,11 +1379,17 @@ function waterAt(tx, kind, wid) {
   const a = THREE.MathUtils.lerp(is(fi - 1), is(fi), sstep(-wid, wid, local));
   return THREE.MathUtils.lerp(a, is(fi + 1), sstep(L - wid, L + wid, local));
 }
+function segAt(arr, tx, wid) {
+  const fi = Math.floor(tx / L), local = tx - fi * L;
+  const at = (k) => arr[((k % 16) + 16) % 16];
+  const a = THREE.MathUtils.lerp(at(fi - 1), at(fi), sstep(-wid, wid, local));
+  return THREE.MathUtils.lerp(a, at(fi + 1), sstep(L - wid, L + wid, local));
+}
 function riseAt(tx, z) {
   tx = ((tx % WRAP) + WRAP) % WRAP;
   const lake = waterAt(tx, 2, 40), sea = waterAt(tx, 1, 60);
   const R = Math.max(2, 7 + 5 * Math.sin(tx * 0.0047) + 3 * Math.sin(tx * 0.013 + 1.3));
-  return R * sstep(-44, -154, z) * (1 - Math.max(sea, lake));
+  return R * segAt(PLACES.map((p) => p.rise), tx, 80) * sstep(-44, -154, z) * (1 - Math.max(sea, lake));
 }
 
 // ---------- painterly post pass ----------
@@ -1930,7 +1528,7 @@ function applyEnv() {
   lampHeadMat.emissiveIntensity = env.night * 3;
   glowMat.opacity = env.night;
   MAT.win.emissiveIntensity = env.night * 2.2;
-  STORE.glass.emissiveIntensity = 0.25 + env.night * 1.4;
+  placesNight(env.night);
   MAT.water.color.copy(env.hor).lerp(env.top, 0.4).multiplyScalar(1.6);
   rainMesh.visible = env.rain > 0;
   glassMat.uniforms.uRain.value = env.rain;
@@ -2161,6 +1759,11 @@ function applyGrade() {
   sky.material.uniforms.uHor.value.copy(env.hor).multiply(_g2);
   sky.material.uniforms.uTop.value.copy(env.top).lerp(_grade.copy(env.top).multiply(_g2), 0.6);
   U.uAmb.value.copy(env.amb).multiplyScalar(env.ambI * 0.75).multiply(_grade.set(1, 1, 1).lerp(_g2, 0.5));
+  const mist = segAt(MIST, travel, 60);
+  U.uFogNear.value = env.fogNear * (1 - mist * 0.6);
+  U.uFogFar.value = env.fogFar * (1 - mist * 0.55);
+  scene.fog.near = U.uFogNear.value;
+  scene.fog.far = U.uFogFar.value;
 }
 
 function frame(now) {
@@ -2250,5 +1853,6 @@ function frame(now) {
 }
 
 UI.init({ pages });
-Object.assign(window.__three, { openJournal, closeJournal, openEnvelope, closeEnvelope, pressIntercom, U, ground });
+// tick(n): run n frames by hand, for testing while the page is in the background
+Object.assign(window.__three, { openJournal, closeJournal, openEnvelope, closeEnvelope, pressIntercom, U, ground, tick: (n = 1) => { for (let i = 0; i < n; i++) frame(last + 16); } });
 requestAnimationFrame((t) => { last = t; frame(t); UI.reveal(); });
