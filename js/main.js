@@ -4,7 +4,7 @@ import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 import { FLOWERS, COLS, ROWS, rng, buildAtlas, brushCanvas, paperCanvas, grainCanvas, signCanvas, buildPages, cellRect } from './paint.js';
 import { computeEnv, rollWeather, WEATHERS } from './env.js';
 import * as UI from './ui.js';
-import { PLACES, buildPlace, placesNight } from './places.js';
+import { PLACES, buildPlace } from './places.js';
 
 await Promise.all([
   document.fonts.load('64px "Pinyon Script"'),
@@ -1015,10 +1015,13 @@ function updateSteam(dt) {
   B.add(cone, tissue);
   // stems poking out of the narrow end
   const stemMat = new THREE.MeshStandardMaterial({ color: '#4f6d38', roughness: 0.8 });
+  // The bouquet lies tilted, open end resting on the table, so the stems
+  // leave the tip and lie flat along the table (TILT undoes the tilt).
+  const TILT = 0.19;
   for (let i = 0; i < 6; i++) {
     const st = shadowy(new THREE.Mesh(new THREE.CylinderGeometry(0.0028, 0.0028, 0.1, 6).rotateZ(Math.PI / 2), stemMat));
-    st.position.set(0.19, (i % 3 - 1) * 0.006, (Math.floor(i / 3) - 0.5) * 0.01);
-    st.rotation.y = (i - 2.5) * 0.04;
+    st.position.set(0.14 + 0.05 * Math.cos(TILT), 0.05 * Math.sin(TILT) + 0.003 + (i % 2) * 0.004, (i - 2.5) * 0.005);
+    st.rotation.set(0, (i - 2.5) * 0.04, TILT);
     B.add(st);
   }
   // satin ribbon round the neck, tails trailing on the table
@@ -1033,8 +1036,8 @@ function updateSteam(dt) {
     loop.rotation.set(Math.PI / 2, 0, s * 0.6);
     loop.scale.set(1, 0.6, 1);
     const tail = shadowy(new THREE.Mesh(new THREE.PlaneGeometry(0.012, 0.1).rotateX(-Math.PI / 2), ribbonMat));
-    tail.position.set(0.15, -0.025, s * 0.045);
-    tail.rotation.y = s * 0.5;
+    tail.position.set(0.15, 0.002, s * 0.045);
+    tail.rotation.set(0, s * 0.5, TILT);
     B.add(loop, tail);
   }
   // the blooms: deep red roses, blush peonies, white ranunculus, eucalyptus
@@ -1081,8 +1084,8 @@ function updateSteam(dt) {
   }
   B.add(breath);
   B.scale.setScalar(1.25);
-  B.position.set(0.3, TOP + 0.075, -0.7);
-  B.rotation.y = 0.32;
+  B.position.set(0.3, TOP + 0.036, -0.7);
+  B.rotation.set(0, 0.32, -TILT, 'YXZ');
   interior.add(B);
 
   // a return ticket, punched, by the journal
@@ -1528,7 +1531,6 @@ function applyEnv() {
   lampHeadMat.emissiveIntensity = env.night * 3;
   glowMat.opacity = env.night;
   MAT.win.emissiveIntensity = env.night * 2.2;
-  placesNight(env.night);
   MAT.water.color.copy(env.hor).lerp(env.top, 0.4).multiplyScalar(1.6);
   rainMesh.visible = env.rain > 0;
   glassMat.uniforms.uRain.value = env.rain;
