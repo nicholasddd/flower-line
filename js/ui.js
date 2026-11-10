@@ -243,7 +243,7 @@ function startAudio() {
   const hp = ac.createBiquadFilter();
   hp.type = 'highpass'; hp.frequency.value = 2500;
   rainGain = ac.createGain();
-  rainGain.gain.value = raining ? 0.05 : 0;
+  rainGain.gain.value = raining ? 0.025 : 0;
   rain.connect(hp).connect(rainGain).connect(master);
   rain.start();
   startMusic();
@@ -262,7 +262,7 @@ function setupSound() {
 
 export function setRain(on) {
   raining = on;
-  if (rainGain) rainGain.gain.setTargetAtTime(on ? 0.05 : 0, ac.currentTime, 0.5);
+  if (rainGain) rainGain.gain.setTargetAtTime(on ? 0.025 : 0, ac.currentTime, 0.5);
 }
 
 function knock(t, vol) {
@@ -393,7 +393,7 @@ function scheduleStep(t) {
 
 function startMusic() {
   musicBus = ac.createGain();
-  musicBus.gain.value = 0.55;
+  musicBus.gain.value = 1.1;
   const verb = reverb(3.2);
   const wet = ac.createGain(); wet.gain.value = 0.45;
   musicBus.connect(master);

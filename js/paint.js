@@ -3,21 +3,21 @@
 
 export const FLOWERS = [
   { key: 'roses',          name: 'Roses',          height: 0.70, tint: '#a3283a', rows: 0, hueVar: 0.03 },
-  { key: 'peonies',        name: 'Peonies',        height: 0.80, tint: '#e9a3b4', rows: 0, hueVar: 0.04 },
-  { key: 'carnations',     name: 'Carnations',     height: 0.60, tint: '#e78a9e', rows: 1, hueVar: 0.04 },
+  { key: 'peonies',        name: 'Peonies',        height: 0.80, tint: '#e9a3b4', rows: 0, hueVar: 0.03 },
+  { key: 'carnations',     name: 'Carnations',     height: 0.60, tint: '#e78a9e', rows: 1, hueVar: 0.03 },
   { key: 'begonias',       name: 'Begonias',       height: 0.45, tint: '#f0c4cc', rows: 0, hueVar: 0.03 },
   { key: 'daisies',        name: 'Daisies',        height: 0.50, tint: '#e9ecd8', rows: 0, hueVar: 0.00 },
-  { key: 'hydrangeas',     name: 'Hydrangeas',     height: 0.90, tint: '#7f8fd0', rows: 0, hueVar: 0.06 },
-  { key: 'orchids',        name: 'Orchids',        height: 0.60, tint: '#e3cf5a', rows: 1, hueVar: 0.05 },
-  { key: 'lilies',         name: 'Lilies',         height: 0.90, tint: '#e98aa8', rows: 0, hueVar: 0.04 },
-  { key: 'chrysanthemums', name: 'Chrysanthemums', height: 0.60, tint: '#efa4b6', rows: 1, hueVar: 0.05 },
-  { key: 'ranunculus',     name: 'Ranunculus',     height: 0.50, tint: '#ef8a3a', rows: 1, hueVar: 0.05 },
-  { key: 'dahlias',        name: 'Dahlias',        height: 0.90, tint: '#c37ac8', rows: 1, hueVar: 0.06 },
-  { key: 'tulips',         name: 'Tulips',         height: 0.55, tint: '#f28a2e', rows: 1, hueVar: 0.30 },
-  { key: 'irises',         name: 'Irises',         height: 0.80, tint: '#6a4fb8', rows: 1, hueVar: 0.04 },
-  { key: 'azaleas',        name: 'Azaleas',        height: 0.80, tint: '#f2c6d6', rows: 0, hueVar: 0.05 },
+  { key: 'hydrangeas',     name: 'Hydrangeas',     height: 0.90, tint: '#7f8fd0', rows: 0, hueVar: 0.03 },
+  { key: 'orchids',        name: 'Orchids',        height: 0.60, tint: '#e3cf5a', rows: 1, hueVar: 0.03 },
+  { key: 'lilies',         name: 'Lilies',         height: 0.90, tint: '#e98aa8', rows: 0, hueVar: 0.03 },
+  { key: 'chrysanthemums', name: 'Chrysanthemums', height: 0.60, tint: '#efa4b6', rows: 1, hueVar: 0.03 },
+  { key: 'ranunculus',     name: 'Ranunculus',     height: 0.50, tint: '#ef8a3a', rows: 1, hueVar: 0.03 },
+  { key: 'dahlias',        name: 'Dahlias',        height: 0.90, tint: '#c37ac8', rows: 1, hueVar: 0.03 },
+  { key: 'tulips',         name: 'Tulips',         height: 0.55, tint: '#f28a2e', rows: 1, hueVar: 0.03 },
+  { key: 'irises',         name: 'Irises',         height: 0.80, tint: '#6a4fb8', rows: 1, hueVar: 0.03 },
+  { key: 'azaleas',        name: 'Azaleas',        height: 0.80, tint: '#f2c6d6', rows: 0, hueVar: 0.03 },
   { key: 'sunflowers',     name: 'Sunflowers',     height: 1.75, tint: '#efc028', rows: 1, hueVar: 0.00 },
-  { key: 'violets',        name: 'Violets',        height: 0.30, tint: '#6f6cc4', rows: 0, hueVar: 0.05 },
+  { key: 'violets',        name: 'Violets',        height: 0.30, tint: '#6f6cc4', rows: 0, hueVar: 0.03 },
 ];
 
 export const CELL = 256, COLS = 8, ROWS = 5;
@@ -238,7 +238,7 @@ const DRAW = {
     const heads = [[96, 132], [150, 118], [176, 150], [122, 160]];
     for (const [x, y] of heads) {
       stem(ctx, x, 220, x, y + 8, 3, 0, hsl(350, 40, 40));
-      const h = v ? 6 : 345;
+      const h = v ? 352 : 345;
       squash(ctx, x, y, 0.82, () => {
         radial(ctx, R, x, y, 6, 24, 17, h, 52, v ? 76 : 86, 'round');
         radial(ctx, R, x, y, 5, 14, 11, h, 56, v ? 82 : 90, 'round');
@@ -270,7 +270,7 @@ const DRAW = {
       leaf(ctx, R, 128 + (R() - 0.5) * 70, 180 + R() * 50, -Math.PI / 2 + (R() - 0.5) * 2.6, 54, 24, 120, 40, 26);
     }
     const cx = 128, cy = 98, r0 = 62;
-    const h0 = v ? 285 : 228;
+    const h0 = v ? 238 : 228;
     for (let i = 0; i < 90; i++) {
       const a = R() * TAU, rr = Math.sqrt(R()) * r0;
       const x = cx + Math.cos(a) * rr, y = cy + Math.sin(a) * rr * 0.82;
@@ -291,12 +291,12 @@ const DRAW = {
     ctx.bezierCurveTo(100, 140, 140, 40, 200, 50);
     ctx.stroke();
     const spots = [[124, 120], [150, 68], [192, 58]];
-    const h = v ? 320 : 50, l = v ? 82 : 66;
+    const h = v ? 46 : 50, l = v ? 78 : 66;
     for (const [x, y] of spots) {
       const k = 0.9 + R() * 0.2;
-      for (const a of [-Math.PI / 2, Math.PI * 0.82, Math.PI * 0.18]) petal(ctx, R, x, y, a, 30 * k, 12 * k, h, 80, l, 'round', { vein: hsl(320, 60, 45, 0.6) });
-      for (const a of [Math.PI * 1.08, -0.08]) petal(ctx, R, x, y, a, 27 * k, 17 * k, h, 82, l + 4, 'round', { vein: hsl(320, 60, 45, 0.5) });
-      petal(ctx, R, x, y + 2, Math.PI / 2, 22 * k, 13 * k, 305, 55, 44, 'round');
+      for (const a of [-Math.PI / 2, Math.PI * 0.82, Math.PI * 0.18]) petal(ctx, R, x, y, a, 30 * k, 12 * k, h, 80, l, 'round', { vein: hsl(28, 70, 42, 0.6) });
+      for (const a of [Math.PI * 1.08, -0.08]) petal(ctx, R, x, y, a, 27 * k, 17 * k, h, 82, l + 4, 'round', { vein: hsl(28, 70, 42, 0.5) });
+      petal(ctx, R, x, y + 2, Math.PI / 2, 22 * k, 13 * k, 34, 80, 48, 'round');
       dab(ctx, x, y, 4, hsl(50, 30, 96));
     }
   },
@@ -347,7 +347,7 @@ const DRAW = {
     for (let i = 0; i < 6; i++) leaf(ctx, R, 128 + (R() - 0.5) * 30, 170 + i * 13, i % 2 ? -0.8 : Math.PI + 0.8, 30, 12, 112, 36, 32);
     for (const [x, y] of heads) {
       const k = v ? 0.78 : 1;
-      const h = v ? 12 : 26;
+      const h = v ? 22 : 26;
       squash(ctx, x, y, 0.8, () => {
         for (let r = 48; r > 5; r -= 5) {
           const rr = r * k, t = (48 - r) / 48;
@@ -371,7 +371,7 @@ const DRAW = {
     const cx = 128, cy = 80;
     stem(ctx, 128, 256, cx, cy + 30, 5, (R() - 0.5) * 20);
     for (let i = 0; i < 6; i++) leaf(ctx, R, 128, 150 + i * 17, i % 2 ? -0.5 : Math.PI + 0.5, 34, 13, 115, 36, 28);
-    const h = v ? 330 : 302;
+    const h = v ? 308 : 302;
     squash(ctx, cx, cy, 0.82, () => {
       radial(ctx, R, cx, cy, 16, 58, 13, h, 52, 64, 'point', { tip: 22, jit: 0.04, off: 0 });
       radial(ctx, R, cx, cy, 14, 45, 12, h, 54, 66, 'point', { tip: 22, jit: 0.04, off: 0.2 });
@@ -385,7 +385,7 @@ const DRAW = {
     const heads = [[102, 92], [158, 76]];
     for (const [x, y] of heads) stem(ctx, x + (128 - x) * 0.3, 256, x, y + 30, 5, (R() - 0.5) * 10, hsl(110, 30, 38));
     for (let i = 0; i < 4; i++) leaf(ctx, R, 100 + i * 18, 256, -Math.PI / 2 + (i - 1.5) * 0.35, 120 + R() * 30, 15, 120, 26, 40);
-    const h = v ? 352 : 26;
+    const h = v ? 22 : 28;
     for (const [x, y] of heads) {
       const by = y + 34;
       petal(ctx, R, x, by, -Math.PI / 2 - 0.3, 58, 22, h, 90, 46, 'round', { tipHue: h + 18, tip: 12 });
