@@ -765,100 +765,341 @@ const envelope = (() => {
   seal.position.set(0, 0.002, EH * 0.5);
   pivot.add(seal);
   g.add(body, letter, pivot);
-  g.position.set(0.065, TOP, -0.385);
-  g.rotation.y = 0.1;
+  g.position.set(0.11, TOP, -0.45);
+  g.rotation.y = 0.28;
   g.userData = { kind: 'envelope', pivot, letter, EW, EH, ET, home: { p: g.position.clone(), q: g.quaternion.clone() } };
   interior.add(g);
   interactive.push(g);
   return g;
 })();
 
-// iced tea
-const drink = (() => {
-  const g = new THREE.Group();
-  const glass = new THREE.Mesh(new THREE.CylinderGeometry(0.037, 0.031, 0.13, 24, 1, true),
-    new THREE.MeshStandardMaterial({ color: '#dfeef0', transparent: true, opacity: 0.28, roughness: 0.05, metalness: 0.2, side: THREE.DoubleSide, depthWrite: false }));
-  glass.position.y = 0.065;
-  const tea = shadowy(new THREE.Mesh(new THREE.CylinderGeometry(0.034, 0.03, 0.09, 24), new THREE.MeshStandardMaterial({ color: '#d0702a', roughness: 0.3 })));
-  tea.position.y = 0.047;
-  const cream = new THREE.Mesh(new THREE.CylinderGeometry(0.0345, 0.0342, 0.012, 24), new THREE.MeshStandardMaterial({ color: '#f2d6b0', roughness: 0.4 }));
-  cream.position.y = 0.097;
-  const iceMat = new THREE.MeshStandardMaterial({ color: '#f4fbff', transparent: true, opacity: 0.55, roughness: 0.1 });
-  [[0.01, 0.008, 0.3], [-0.012, -0.006, 1.1], [0.002, -0.014, 2.0]].forEach(([x, z, r]) => {
-    const ice = new THREE.Mesh(new RoundedBoxGeometry(0.02, 0.018, 0.02, 2, 0.004), iceMat);
-    ice.position.set(x, 0.1, z);
-    ice.rotation.set(r, r * 0.7, r * 0.3);
-    g.add(ice);
+// ---------- the drink: whatever suits the weather and the hour ----------
+// Rain brings a mug of hot cocoa, a grey day a pot of tea, a hot afternoon a
+// fizzing soda with its can, a fresh morning a latte, a mild cloudy day a
+// Thai iced tea, and the night a glass of chamomile.
+const steamTex = (() => {
+  const c = document.createElement('canvas'); c.width = c.height = 64;
+  const ctx = c.getContext('2d');
+  const g = ctx.createRadialGradient(32, 32, 2, 32, 32, 30);
+  g.addColorStop(0, 'rgba(255,255,255,0.55)'); g.addColorStop(1, 'rgba(255,255,255,0)');
+  ctx.fillStyle = g; ctx.fillRect(0, 0, 64, 64);
+  return tex(c);
+})();
+const steamPuffs = [];
+function addSteam(g, x, y, z, n = 5) {
+  for (let i = 0; i < n; i++) {
+    const m = new THREE.Sprite(new THREE.SpriteMaterial({ map: steamTex, transparent: true, depthWrite: false, opacity: 0 }));
+    m.userData = { x, y, z, phase: i / n, g };
+    m.scale.setScalar(0.04);
+    g.add(m);
+    steamPuffs.push(m);
+  }
+}
+const clearGlass = () => new THREE.MeshStandardMaterial({ color: '#dfeef0', transparent: true, opacity: 0.28, roughness: 0.05, metalness: 0.2, side: THREE.DoubleSide, depthWrite: false });
+const iceMat = new THREE.MeshStandardMaterial({ color: '#f4fbff', transparent: true, opacity: 0.55, roughness: 0.1 });
+const ceramic = (c) => new THREE.MeshStandardMaterial({ color: c, roughness: 0.35 });
+function ice(g, list, y) {
+  list.forEach(([x, z, r]) => {
+    const m = new THREE.Mesh(new RoundedBoxGeometry(0.02, 0.018, 0.02, 2, 0.004), iceMat);
+    m.position.set(x, y, z);
+    m.rotation.set(r, r * 0.7, r * 0.3);
+    g.add(m);
   });
-  const straw = new THREE.Mesh(new THREE.CylinderGeometry(0.0035, 0.0035, 0.2, 8), new THREE.MeshStandardMaterial({ color: '#4f8a5a', roughness: 0.5 }));
-  straw.position.set(0.012, 0.13, 0.006);
-  straw.rotation.z = -0.22;
-  g.add(glass, tea, cream, straw);
-  g.position.set(-0.4, TOP, -0.88);
-  interior.add(g);
-  return g;
+}
+function mug(g, color, rimY = 0.09, r = 0.036) {
+  const body = shadowy(new THREE.Mesh(new THREE.CylinderGeometry(r, r * 0.92, rimY, 24, 1, true), Object.assign(ceramic(color), { side: THREE.DoubleSide })));
+  body.position.y = rimY / 2;
+  const base = new THREE.Mesh(new THREE.CircleGeometry(r * 0.92, 24).rotateX(-Math.PI / 2), ceramic(color));
+  base.position.y = 0.002;
+  const handle = shadowy(new THREE.Mesh(new THREE.TorusGeometry(0.022, 0.006, 8, 16, Math.PI * 1.2), ceramic(color)));
+  handle.position.set(r + 0.004, rimY * 0.5, 0);
+  handle.rotation.z = -Math.PI * 0.6;
+  g.add(body, base, handle);
+}
+function sodaLabel() {
+  const c = document.createElement('canvas'); c.width = 256; c.height = 128;
+  const ctx = c.getContext('2d');
+  const g = ctx.createLinearGradient(0, 0, 0, 128);
+  g.addColorStop(0, '#f4a6b8'); g.addColorStop(1, '#e8607e');
+  ctx.fillStyle = g; ctx.fillRect(0, 0, 256, 128);
+  ctx.fillStyle = 'rgba(255,255,255,.5)';
+  for (let i = 0; i < 40; i++) { ctx.beginPath(); ctx.arc(Math.random() * 256, Math.random() * 128, 1 + Math.random() * 4, 0, 6.3); ctx.fill(); }
+  ctx.fillStyle = '#fffaf0';
+  ctx.font = '52px "Pinyon Script", cursive';
+  ctx.textAlign = 'center';
+  ctx.fillText('lychee', 128, 80);
+  return tex(c);
+}
+
+const drink = (() => {
+  const root = new THREE.Group();
+  const V = {};
+
+  // Thai iced tea
+  {
+    const g = new THREE.Group();
+    const glass = new THREE.Mesh(new THREE.CylinderGeometry(0.037, 0.031, 0.13, 24, 1, true), clearGlass());
+    glass.position.y = 0.065;
+    const tea = shadowy(new THREE.Mesh(new THREE.CylinderGeometry(0.034, 0.03, 0.09, 24), ceramic('#d0702a')));
+    tea.position.y = 0.047;
+    const cream = new THREE.Mesh(new THREE.CylinderGeometry(0.0345, 0.0342, 0.012, 24), ceramic('#f2d6b0'));
+    cream.position.y = 0.097;
+    ice(g, [[0.01, 0.008, 0.3], [-0.012, -0.006, 1.1], [0.002, -0.014, 2.0]], 0.1);
+    const straw = new THREE.Mesh(new THREE.CylinderGeometry(0.0035, 0.0035, 0.2, 8), ceramic('#4f8a5a'));
+    straw.position.set(0.012, 0.13, 0.006);
+    straw.rotation.z = -0.22;
+    g.add(glass, tea, cream, straw);
+    V.icedTea = g;
+  }
+  // lychee soda: a tall glass fizzing over ice, the can beside it
+  {
+    const g = new THREE.Group();
+    const glass = new THREE.Mesh(new THREE.CylinderGeometry(0.033, 0.03, 0.15, 24, 1, true), clearGlass());
+    glass.position.y = 0.075;
+    const soda = new THREE.Mesh(new THREE.CylinderGeometry(0.031, 0.029, 0.12, 24), new THREE.MeshStandardMaterial({ color: '#f6d4dc', transparent: true, opacity: 0.75, roughness: 0.1 }));
+    soda.position.y = 0.062;
+    ice(g, [[0.008, 0.006, 0.4], [-0.01, -0.004, 1.3], [0.001, -0.012, 2.2], [-0.004, 0.01, 0.9]], 0.112);
+    const bubbles = new THREE.InstancedMesh(new THREE.SphereGeometry(0.0018, 6, 4), new THREE.MeshStandardMaterial({ color: '#ffffff', transparent: true, opacity: 0.8 }), 40);
+    const R = rng(9);
+    for (let i = 0; i < 40; i++) bubbles.setMatrixAt(i, new THREE.Matrix4().makeTranslation((R() - 0.5) * 0.05, 0.01 + R() * 0.11, (R() - 0.5) * 0.05));
+    bubbles.userData.fizz = true;
+    const lime = new THREE.Mesh(new THREE.CylinderGeometry(0.02, 0.02, 0.004, 20), ceramic('#b9d86a'));
+    lime.position.set(0.026, 0.148, 0);
+    lime.rotation.z = 1.2;
+    const straw = new THREE.Mesh(new THREE.CylinderGeometry(0.0035, 0.0035, 0.21, 8), ceramic('#f2f0ea'));
+    straw.position.set(-0.01, 0.15, 0.004);
+    straw.rotation.z = 0.2;
+    const can = new THREE.Group();
+    const canBody = shadowy(new THREE.Mesh(new THREE.CylinderGeometry(0.026, 0.026, 0.11, 24), [new THREE.MeshStandardMaterial({ map: sodaLabel(), roughness: 0.35, metalness: 0.3 }), M.metal, M.metal]));
+    canBody.position.y = 0.055;
+    can.add(canBody);
+    can.position.set(0.085, 0, 0.03);
+    can.rotation.y = 2.2;
+    g.add(glass, soda, bubbles, lime, straw, can);
+    V.soda = g;
+  }
+  // hot cocoa with marshmallows
+  {
+    const g = new THREE.Group();
+    mug(g, '#c7563f');
+    const cocoa = new THREE.Mesh(new THREE.CircleGeometry(0.033, 24).rotateX(-Math.PI / 2), ceramic('#5a3424'));
+    cocoa.position.y = 0.082;
+    g.add(cocoa);
+    const R = rng(4);
+    for (let i = 0; i < 6; i++) {
+      const m = new THREE.Mesh(new RoundedBoxGeometry(0.012, 0.009, 0.012, 2, 0.003), ceramic(i % 2 ? '#fbeef2' : '#ffffff'));
+      m.position.set((R() - 0.5) * 0.04, 0.085, (R() - 0.5) * 0.04);
+      m.rotation.y = R() * 3;
+      g.add(m);
+    }
+    addSteam(g, 0, 0.1, 0);
+    V.cocoa = g;
+  }
+  // a small pot of tea and a cup on its saucer
+  {
+    const g = new THREE.Group();
+    const pot = new THREE.Group();
+    const body = shadowy(new THREE.Mesh(new THREE.SphereGeometry(0.05, 20, 14), ceramic('#e9e4da')));
+    body.scale.y = 0.8;
+    body.position.y = 0.042;
+    const lid = new THREE.Mesh(new THREE.SphereGeometry(0.02, 12, 8), ceramic('#e9e4da'));
+    lid.position.y = 0.084;
+    const spout = shadowy(new THREE.Mesh(new THREE.CylinderGeometry(0.006, 0.011, 0.05, 10), ceramic('#e9e4da')));
+    spout.position.set(0.055, 0.055, 0);
+    spout.rotation.z = -0.9;
+    const handle = new THREE.Mesh(new THREE.TorusGeometry(0.022, 0.005, 8, 16), ceramic('#e9e4da'));
+    handle.position.set(-0.05, 0.05, 0);
+    pot.add(body, lid, spout, handle);
+    pot.position.set(-0.03, 0, -0.02);
+    const cup = new THREE.Group();
+    const saucer = shadowy(new THREE.Mesh(new THREE.CylinderGeometry(0.045, 0.04, 0.005, 24), ceramic('#e9e4da')));
+    cup.add(saucer);
+    const c = new THREE.Group();
+    mug(c, '#e9e4da', 0.045, 0.03);
+    c.position.y = 0.004;
+    const tea = new THREE.Mesh(new THREE.CircleGeometry(0.028, 20).rotateX(-Math.PI / 2), ceramic('#b56a2c'));
+    tea.position.y = 0.042;
+    cup.add(c, tea);
+    cup.position.set(0.09, 0, 0.04);
+    addSteam(cup, 0, 0.06, 0, 4);
+    g.add(pot, cup);
+    V.tea = g;
+  }
+  // a latte with a heart in the foam, on a saucer
+  {
+    const g = new THREE.Group();
+    const saucer = shadowy(new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.045, 0.005, 24), ceramic('#f0ebe2')));
+    const c = new THREE.Group();
+    mug(c, '#f0ebe2', 0.055, 0.038);
+    c.position.y = 0.004;
+    const foam = new THREE.Mesh(new THREE.CircleGeometry(0.036, 24).rotateX(-Math.PI / 2), (() => {
+      const cv = document.createElement('canvas'); cv.width = cv.height = 64;
+      const x = cv.getContext('2d');
+      x.fillStyle = '#b8835a'; x.fillRect(0, 0, 64, 64);
+      x.fillStyle = '#f6ead8';
+      x.beginPath(); x.moveTo(32, 48); x.bezierCurveTo(6, 30, 18, 10, 32, 24); x.bezierCurveTo(46, 10, 58, 30, 32, 48); x.fill();
+      return new THREE.MeshStandardMaterial({ map: tex(cv), roughness: 0.6 });
+    })());
+    foam.position.y = 0.055;
+    foam.rotation.y = 1.4;
+    g.add(saucer, c, foam);
+    addSteam(g, 0, 0.07, 0, 3);
+    V.latte = g;
+  }
+  // chamomile in a clear glass mug, tea-bag tag hanging over the rim
+  {
+    const g = new THREE.Group();
+    const glass = new THREE.Mesh(new THREE.CylinderGeometry(0.036, 0.034, 0.1, 24, 1, true), clearGlass());
+    glass.position.y = 0.05;
+    const tea = new THREE.Mesh(new THREE.CylinderGeometry(0.034, 0.032, 0.075, 24), new THREE.MeshStandardMaterial({ color: '#e9c25a', transparent: true, opacity: 0.8, roughness: 0.1 }));
+    tea.position.y = 0.039;
+    const tag = new THREE.Mesh(new THREE.BoxGeometry(0.018, 0.022, 0.001), ceramic('#f4efe4'));
+    tag.position.set(0.04, 0.075, 0.01);
+    const string = new THREE.Mesh(new THREE.CylinderGeometry(0.0006, 0.0006, 0.04, 4), ceramic('#f4efe4'));
+    string.position.set(0.038, 0.098, 0.006);
+    const handle = new THREE.Mesh(new THREE.TorusGeometry(0.022, 0.005, 8, 16, Math.PI * 1.2), clearGlass());
+    handle.position.set(0.04, 0.05, 0);
+    handle.rotation.z = -Math.PI * 0.6;
+    g.add(glass, tea, tag, string, handle);
+    addSteam(g, 0, 0.09, 0, 4);
+    V.chamomile = g;
+  }
+
+  for (const g of Object.values(V)) { g.visible = false; root.add(g); }
+  root.userData.variants = V;
+  root.position.set(-0.4, TOP, -0.86);
+  interior.add(root);
+  return root;
 })();
 
-// wrapping paper, shears, twine and a few cut stems
-{
-  const kraft = shadowy(new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.0012, 0.22), painted('#b8916a', { n: 700, spread: 14, len: 30, width: 6, seed: 70 })), false, true);
-  kraft.position.set(0.24, TOP + 0.0006, -0.66);
-  kraft.rotation.y = 0.12;
-  interior.add(kraft);
+function pickDrink(env) {
+  const V = drink.userData.variants;
+  const h = env.hour;
+  let k = 'icedTea';
+  if (env.rain) k = 'cocoa';
+  else if (env.night > 0.5) k = 'chamomile';
+  else if (env.weather === 'fog' || env.weather === 'overcast') k = 'tea';
+  else if (env.weather === 'clear' && h >= 11 && h < 17) k = 'soda';
+  else if (h < 10.5) k = 'latte';
+  for (const [name, g] of Object.entries(V)) g.visible = name === k;
+}
 
-  const shears = new THREE.Group();
-  const blade = new THREE.Shape();
-  blade.moveTo(0, -0.004); blade.lineTo(0.09, -0.001); blade.lineTo(0.09, 0.001); blade.quadraticCurveTo(0.04, 0.008, 0, 0.006);
-  const bladeGeo = new THREE.ExtrudeGeometry(blade, { depth: 0.0015, bevelEnabled: false }).rotateX(-Math.PI / 2);
-  const handleMat = new THREE.MeshStandardMaterial({ color: '#c8574a', roughness: 0.5 });
-  for (const s of [-1, 1]) {
-    const b = shadowy(new THREE.Mesh(bladeGeo, M.metal));
-    b.rotation.y = s * 0.12;
-    b.position.y = 0.002 + (s > 0 ? 0.0016 : 0);
-    const ring = shadowy(new THREE.Mesh(new THREE.TorusGeometry(0.016, 0.005, 8, 20).rotateX(Math.PI / 2), handleMat));
-    ring.position.set(-0.03, 0.005, s * 0.02);
-    const arm = shadowy(new THREE.Mesh(new THREE.BoxGeometry(0.03, 0.004, 0.006), handleMat));
-    arm.position.set(-0.012, 0.005, s * 0.008);
-    arm.rotation.y = -s * 0.5;
-    shears.add(b, ring, arm);
+function updateSteam(dt) {
+  for (const m of steamPuffs) {
+    if (!m.userData.g.parent?.visible && !m.userData.g.visible) continue;
+    const u = m.userData;
+    u.phase = (u.phase + dt * 0.35) % 1;
+    const p = u.phase;
+    m.position.set(u.x + Math.sin(p * 6 + u.y * 40) * 0.012, u.y + p * 0.12, u.z);
+    m.scale.setScalar(0.03 + p * 0.06);
+    m.material.opacity = Math.sin(p * Math.PI) * 0.35;
   }
-  const screw = new THREE.Mesh(new THREE.CylinderGeometry(0.004, 0.004, 0.006, 10), M.metal);
-  screw.position.y = 0.004;
-  shears.add(screw);
-  shears.position.set(0.22, TOP + 0.0012, -0.6);
-  shears.rotation.y = 0.55;
-  interior.add(shears);
+}
 
-  // cut stems with blooms on the paper
+// ---------- the bouquet: wrapped, ribboned, carried a long way ----------
+// Someone is bringing these to the one they love. Their seat is empty for the
+// moment; the flowers lie on the table with the letter tucked against them.
+{
+  const B = new THREE.Group();
+  // kraft paper cone with a blush tissue lining, lying on its side
+  const kraftMat = painted('#b8916a', { n: 700, spread: 14, len: 30, width: 6, seed: 70 }, { side: THREE.DoubleSide });
+  const tissueMat = painted('#f2d2d6', { n: 400, spread: 10, len: 20, width: 5, seed: 71 }, { side: THREE.DoubleSide });
+  const cone = shadowy(new THREE.Mesh(new THREE.ConeGeometry(0.11, 0.3, 18, 1, true).rotateZ(-Math.PI / 2), kraftMat));
+  cone.position.x = -0.01;
+  cone.scale.set(1, 0.55, 1);
+  const tissue = new THREE.Mesh(new THREE.ConeGeometry(0.125, 0.26, 18, 1, true, 0.3, 4.8).rotateZ(-Math.PI / 2), tissueMat);
+  tissue.position.x = -0.03;
+  tissue.scale.set(1, 0.6, 1);
+  B.add(cone, tissue);
+  // stems poking out of the narrow end
   const stemMat = new THREE.MeshStandardMaterial({ color: '#4f6d38', roughness: 0.8 });
-  [[0.25, -0.735, 0.15, 2], [0.27, -0.715, 0.32, 16], [0.2, -0.755, 0.0, 22]].forEach(([x, z, r, cell], i) => {
-    const s = new THREE.Group();
-    const st = shadowy(new THREE.Mesh(new THREE.CylinderGeometry(0.0025, 0.0025, 0.16, 6).rotateZ(Math.PI / 2), stemMat));
-    st.position.set(0.08, 0.003, 0);
-    const bloom = new THREE.Mesh(new THREE.PlaneGeometry(0.075, 0.075).rotateX(-Math.PI / 2).rotateY(Math.PI / 2),
-      new THREE.MeshStandardMaterial({ map: cellTexture(cell), alphaTest: 0.5, side: THREE.DoubleSide, roughness: 0.9 }));
-    bloom.position.set(-0.012, 0.007, 0);
-    bloom.castShadow = true;
-    s.add(st, bloom);
-    s.position.set(x - 0.06, TOP + 0.0015 + i * 0.005, z);
-    s.rotation.y = r;
-    interior.add(s);
-  });
+  for (let i = 0; i < 6; i++) {
+    const st = shadowy(new THREE.Mesh(new THREE.CylinderGeometry(0.0028, 0.0028, 0.1, 6).rotateZ(Math.PI / 2), stemMat));
+    st.position.set(0.19, (i % 3 - 1) * 0.006, (Math.floor(i / 3) - 0.5) * 0.01);
+    st.rotation.y = (i - 2.5) * 0.04;
+    B.add(st);
+  }
+  // satin ribbon round the neck, tails trailing on the table
+  const ribbonMat = new THREE.MeshStandardMaterial({ color: '#9e2b3a', roughness: 0.35, metalness: 0.1, side: THREE.DoubleSide });
+  const band = shadowy(new THREE.Mesh(new THREE.TorusGeometry(0.03, 0.006, 6, 20).rotateY(Math.PI / 2), ribbonMat));
+  band.position.x = 0.08;
+  band.scale.set(1, 0.55, 1);
+  B.add(band);
+  for (const s of [-1, 1]) {
+    const loop = shadowy(new THREE.Mesh(new THREE.TorusGeometry(0.018, 0.005, 6, 14), ribbonMat));
+    loop.position.set(0.08, 0.022, s * 0.02);
+    loop.rotation.set(Math.PI / 2, 0, s * 0.6);
+    loop.scale.set(1, 0.6, 1);
+    const tail = shadowy(new THREE.Mesh(new THREE.PlaneGeometry(0.012, 0.1).rotateX(-Math.PI / 2), ribbonMat));
+    tail.position.set(0.15, -0.025, s * 0.045);
+    tail.rotation.y = s * 0.5;
+    B.add(loop, tail);
+  }
+  // the blooms: deep red roses, blush peonies, white ranunculus, eucalyptus
+  // and baby's breath, gathered in a dome at the open end
+  const R = rng(1414);
+  const kinds = [
+    { c: ['#7c1424', '#a3283a', '#c9475a'], s: 0.045 },
+    { c: ['#c4607e', '#e08aa2', '#f2b6c6'], s: 0.055 },
+    { c: ['#d8d2c8', '#efeae0', '#fffaf2'], s: 0.038 },
+  ];
+  const bloomMats = kinds.map((k) => k.c.map((c) => new THREE.MeshStandardMaterial({ color: c, roughness: 0.75, flatShading: true })));
+  const petalGeo = new THREE.IcosahedronGeometry(1, 1);
+  const leafMat = new THREE.MeshStandardMaterial({ color: '#6f8f78', roughness: 0.8, side: THREE.DoubleSide });
+  for (let i = 0; i < 16; i++) {
+    const a = R() * Math.PI * 2, rr = Math.sqrt(R()) * 0.085;
+    const ki = [0, 1, 0, 1, 0, 2, 1, 0][i % 8]; // mostly roses and peonies
+    const k = kinds[ki];
+    const bloom = new THREE.Group();
+    // layered petals: outer pale, inner deeper, each a little cupped
+    for (let l = 0; l < 3; l++) {
+      const p = shadowy(new THREE.Mesh(petalGeo, bloomMats[ki][2 - l]));
+      const sz = k.s * (1 - l * 0.28);
+      p.scale.set(sz * 0.55, sz, sz);
+      p.position.x = l * k.s * 0.18;
+      p.rotation.set(R() * 3, R() * 3, R() * 3);
+      bloom.add(p);
+    }
+    bloom.position.set(-0.17 - Math.cos(rr * 12) * 0.02 - R() * 0.02, Math.sin(a) * rr * 0.6 + 0.01, Math.cos(a) * rr);
+    bloom.rotation.z = Math.sin(a) * 0.4;
+    bloom.rotation.y = -Math.cos(a) * 0.5;
+    B.add(bloom);
+  }
+  for (let i = 0; i < 14; i++) {
+    const leaf = shadowy(new THREE.Mesh(new THREE.CircleGeometry(0.018, 8), leafMat));
+    const a = R() * Math.PI * 2;
+    leaf.position.set(-0.12 - R() * 0.06, Math.sin(a) * 0.06, Math.cos(a) * 0.1);
+    leaf.rotation.set(R() * 3, R() * 3, R() * 3);
+    B.add(leaf);
+  }
+  const breath = new THREE.InstancedMesh(new THREE.SphereGeometry(0.0035, 6, 4), new THREE.MeshStandardMaterial({ color: '#fbf8f2', roughness: 0.9 }), 30);
+  for (let i = 0; i < 30; i++) {
+    const a = R() * Math.PI * 2, rr = 0.06 + R() * 0.05;
+    breath.setMatrixAt(i, new THREE.Matrix4().makeTranslation(-0.16 - R() * 0.07, Math.sin(a) * rr * 0.6 + 0.01, Math.cos(a) * rr));
+  }
+  B.add(breath);
+  B.scale.setScalar(1.25);
+  B.position.set(0.3, TOP + 0.075, -0.7);
+  B.rotation.y = 0.32;
+  interior.add(B);
 
-  const twineTex = (() => {
-    const c = document.createElement('canvas'); c.width = 64; c.height = 64;
-    const ctx = c.getContext('2d');
-    ctx.fillStyle = '#c9ad84'; ctx.fillRect(0, 0, 64, 64);
-    ctx.strokeStyle = 'rgba(90,60,30,0.45)';
-    for (let y = 0; y < 64; y += 4) { ctx.lineWidth = 1.4; ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(64, y + 2); ctx.stroke(); }
-    return tex(c, { repeat: [3, 3] });
+  // a return ticket, punched, by the journal
+  const ticketCanvas = (() => {
+    const c = paperCanvas(256, 88, '#efe4c8');
+    const x = c.getContext('2d');
+    x.fillStyle = '#7a2e2e'; x.fillRect(0, 0, 256, 40);
+    x.fillStyle = '#f6efe0'; x.font = '26px "Cormorant Garamond", serif'; x.textAlign = 'center';
+    x.fillText('FLOWER LINE', 128, 29);
+    x.fillStyle = '#3a2e26'; x.font = '22px "Caveat", cursive';
+    x.fillText('Return  ·  to the end of the line', 128, 120);
+    x.fillText('Seat 14  ·  Carriage 3', 128, 168);
+    x.fillStyle = '#efe4c8'; x.beginPath(); x.arc(220, 210, 10, 0, 6.3); x.fill();
+    return c;
   })();
-  const spool = shadowy(new THREE.Mesh(new THREE.CylinderGeometry(0.034, 0.034, 0.05, 24), new THREE.MeshStandardMaterial({ map: twineTex, roughness: 1 })));
-  spool.position.set(0.4, TOP + 0.025, -0.87);
-  const loose = shadowy(new THREE.Mesh(new THREE.TubeGeometry(new THREE.CatmullRomCurve3([
-    new THREE.Vector3(0.37, TOP + 0.02, -0.845), new THREE.Vector3(0.34, TOP + 0.002, -0.82),
-    new THREE.Vector3(0.3, TOP + 0.002, -0.83), new THREE.Vector3(0.26, TOP + 0.002, -0.8)]), 20, 0.0016, 5), new THREE.MeshStandardMaterial({ color: '#b89a70' })));
-  interior.add(spool, loose);
+  const ticket = shadowy(new THREE.Mesh(new THREE.BoxGeometry(0.075, 0.0008, 0.075), [null, null, new THREE.MeshStandardMaterial({ map: tex(ticketCanvas), roughness: 1 }), null, null, null].map((m) => m ?? new THREE.MeshStandardMaterial({ color: '#efe4c8' }))), false, true);
+  ticket.position.set(-0.14, TOP + 0.0004, -0.47);
+  ticket.rotation.y = -0.35;
+  interior.add(ticket);
 }
 
 // intercom above the window
@@ -1698,6 +1939,7 @@ function applyEnv() {
   post.uniforms.uNight.value = env.night;
   post.uniforms.uExposure.value = THREE.MathUtils.lerp(1.0, 1.15, env.night) * (env.cloud > 0.8 ? 1.12 : 1);
   UI.setRain(env.rain > 0);
+  pickDrink(env);
 }
 applyEnv();
 setInterval(() => { if (state.hour == null) applyEnv(); }, 60000);
@@ -1951,6 +2193,7 @@ function frame(now) {
   camera.rotateZ(Math.sin(time * 0.9) * 0.0018 * settle);
   sky.position.copy(camera.position);
   drink.rotation.z = Math.sin(time * 1.7) * 0.004 + jolt * 0.01 * Math.sin(time * 30);
+  updateSteam(dt);
 
   // tweens
   for (let i = tweens.length - 1; i >= 0; i--) {
