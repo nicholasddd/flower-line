@@ -83,7 +83,7 @@ const U = {
   uSunCol: { value: new THREE.Color() }, uAmb: { value: new THREE.Color() },
   uSunDir: { value: new THREE.Vector3(0, 1, 0) },
   uFogCol: { value: new THREE.Color() }, uFogNear: { value: 40 }, uFogFar: { value: 400 },
-  uNight: { value: 0 }, uWind: { value: 0.2 }, uRain: { value: 0 },
+  uNight: { value: 0 }, uWind: { value: 0.2 }, uRain: { value: 0 }, uCloudShade: { value: 0.1 },
   uLampCol: { value: new THREE.Color('#ffb066') },
   uLampSp: { value: LAMP.sp }, uLampOff: { value: LAMP.off }, uLampZ: { value: LAMP.z },
   uL: { value: L }, uGap: { value: GAP }, uGroundY: { value: GROUND_Y },
@@ -93,7 +93,7 @@ const U = {
 const GLSL_COMMON = /* glsl */`
 uniform float uTravel, uTime, uNight, uFogNear, uFogFar, uLampSp, uLampOff, uLampZ, uL, uGap, uGroundY, uWind, uRain;
 uniform vec3 uSunCol, uAmb, uSunDir, uFogCol, uLampCol;
-uniform float uFEnd[16], uCountry[16];
+uniform float uFEnd[16], uCountry[16], uCloudShade;
 float hash12(vec2 p){ vec3 p3 = fract(vec3(p.xyx) * .1031); p3 += dot(p3, p3.yzx + 33.33); return fract((p3.x + p3.y) * p3.z); }
 float vnoise(vec2 p){ vec2 i = floor(p), f = fract(p); vec2 u = f*f*(3.-2.*f);
   return mix(mix(hash12(i), hash12(i+vec2(1,0)), u.x), mix(hash12(i+vec2(0,1)), hash12(i+vec2(1,1)), u.x), u.y); }
@@ -278,7 +278,7 @@ function buildFlowerField() {
     vertexShader: GLSL_COMMON + /* glsl */`
       attribute vec3 aBase; attribute vec4 aRand; attribute float aKind;
       uniform float uHeights[16]; uniform float uRows[16]; uniform float uHueVar[16];
-      varying vec2 vUv; varying vec3 vW; varying float vCell; varying float vHue; varying float vTop;
+      varying vec2 vUv; varying vec3 vW; varying float vCell; varying float vHue; varying float vTop; varying vec3 vTone;
       void main(){
         float W = aBase.z;
         float x = mod(aBase.x - uTravel + W*.5, W) - W*.5;
@@ -315,12 +315,21 @@ function buildFlowerField() {
         vCell = isF ? float(t)*2. + variant : 32. + floor(aRand.x*7.99);
         float rowHash = hash12(vec2(floor(tx/1.5), 3.));
         vHue = isF ? (uRows[t] > .5 ? rowHash - .5 : aRand.y - .5) * uHueVar[t] * 2. : 0.;
+        // Shades: broad drifts where the colour runs deeper or paler, each
+        // plant a little different, and shorter plants sitting in their
+        // neighbours' shade.
+        float drift = fbm(vec2(tx*.045, aBase.y*.11) + float(t)*3.1);
+        float hRel = isF ? h / (uHeights[t]*(1. + far*1.3)) : 1.;
+        vTone = vec3(
+          (.78 + .34*aRand.z) * (.82 + .36*drift) * mix(.62, 1., smoothstep(.75, 1.15, hRel)),
+          (.75 + .5*fract(aRand.z*13.7)) * (.8 + .4*drift),
+          isF ? (drift - .5) * .07 : 0.);
         vW = wp; vTop = uv.y;
         gl_Position = projectionMatrix * viewMatrix * vec4(wp, 1.);
       }`,
     fragmentShader: GLSL_COMMON + /* glsl */`
       uniform sampler2D uAtlas;
-      varying vec2 vUv; varying vec3 vW; varying float vCell; varying float vHue; varying float vTop;
+      varying vec2 vUv; varying vec3 vW; varying float vCell; varying float vHue; varying float vTop; varying vec3 vTone;
       vec3 hueShift(vec3 c, float a){
         const vec3 k = vec3(.57735);
         float ca = cos(a), sa = sin(a);
@@ -333,11 +342,19 @@ function buildFlowerField() {
         vec4 c = texture2D(uAtlas, auv);
         if (c.a < .5) discard;
         vec3 alb = c.rgb;
-        if (abs(vHue) > .001) alb = max(hueShift(alb, vHue*6.2831), 0.);
+        float hue = vHue + vTone.z;
+        if (abs(hue) > .001) alb = max(hueShift(alb, hue*6.2831), 0.);
+        float lum = dot(alb, vec3(.299, .587, .114));
+        alb = max(mix(vec3(lum), alb, vTone.y), 0.);           // deeper or paler
+        alb *= mix(.68, 1., smoothstep(.06, .5, lum));          // darker petal folds
+        alb *= vTone.x;
         alb *= 1. - uRain*.2;
-        float shade = mix(.45, 1., smoothstep(0., .55, vTop));
+        float shade = mix(.32, 1., smoothstep(0., .6, vTop));
+        // cloud shadows drifting across the field
+        float cs = smoothstep(.42, .62, fbm(vec2((vW.x + uTravel)*.012 - uTime*.02, vW.z*.03)));
+        shade *= 1. - cs * min(uCloudShade*1.3, .55);
         float back = pow(max(dot(normalize(vW - cameraPosition), uSunDir), 0.), 4.) * (1. - uNight);
-        vec3 light = uAmb*shade + uSunCol*(.25 + .75*vTop)*shade + uSunCol*back*.9*vTop;
+        vec3 light = uAmb*mix(vec3(.82,.86,1.12), vec3(1.), vTop)*shade + uSunCol*(.25 + .75*vTop)*shade + uSunCol*back*.9*vTop;
         vec3 o = alb*light + alb*lampLight(vW.x + uTravel, vW.z, vW.y);
         gl_FragColor = vec4(fogIt(o, vW), 1.);
       }`,
@@ -433,21 +450,21 @@ const M = {
   interior.add(rail);
 
   // frame: an outer silver ring and a copper inner lip
-  const ring = rrShape(WIN.w + 0.2, WIN.h + 0.2, WIN.r + 0.1);
+  const ring = rrShape(WIN.w + 0.1, WIN.h + 0.1, WIN.r + 0.05);
   ring.holes.push(rrShape(WIN.w, WIN.h, WIN.r, 0, 0, THREE.Path));
-  const frame = shadowy(new THREE.Mesh(new THREE.ExtrudeGeometry(ring, { depth: 0.05, bevelEnabled: true, bevelThickness: 0.012, bevelSize: 0.012, bevelSegments: 3, curveSegments: 24 }), M.frame));
+  const frame = shadowy(new THREE.Mesh(new THREE.ExtrudeGeometry(ring, { depth: 0.04, bevelEnabled: true, bevelThickness: 0.008, bevelSize: 0.008, bevelSegments: 3, curveSegments: 24 }), M.frame));
   frame.position.set(WIN.cx, WIN.cy, WALL_Z);
   interior.add(frame);
   const lip = rrShape(WIN.w + 0.01, WIN.h + 0.01, WIN.r);
-  lip.holes.push(rrShape(WIN.w - 0.05, WIN.h - 0.05, WIN.r - 0.025, 0, 0, THREE.Path));
+  lip.holes.push(rrShape(WIN.w - 0.03, WIN.h - 0.03, WIN.r - 0.015, 0, 0, THREE.Path));
   const lipM = shadowy(new THREE.Mesh(new THREE.ExtrudeGeometry(lip, { depth: 0.06, bevelEnabled: false, curveSegments: 24 }), M.rim));
   lipM.position.set(WIN.cx, WIN.cy, WALL_Z - 0.05);
   interior.add(lipM);
 
   // rivets around the frame
-  const pts = rrShape(WIN.w + 0.11, WIN.h + 0.11, WIN.r + 0.055).getSpacedPoints(44);
-  const rivets = new THREE.InstancedMesh(new THREE.SphereGeometry(0.007, 8, 6), M.metal, pts.length - 1);
-  pts.slice(0, -1).forEach((p, i) => rivets.setMatrixAt(i, new THREE.Matrix4().makeTranslation(p.x + WIN.cx, p.y + WIN.cy, WALL_Z + 0.064)));
+  const pts = rrShape(WIN.w + 0.058, WIN.h + 0.058, WIN.r + 0.029).getSpacedPoints(52);
+  const rivets = new THREE.InstancedMesh(new THREE.SphereGeometry(0.0055, 8, 6), M.metal, pts.length - 1);
+  pts.slice(0, -1).forEach((p, i) => rivets.setMatrixAt(i, new THREE.Matrix4().makeTranslation(p.x + WIN.cx, p.y + WIN.cy, WALL_Z + 0.05)));
   interior.add(rivets);
 
   // sill
@@ -896,9 +913,17 @@ function addTree(g, R, x, z, s = 1, tall = false) {
   for (let i = 0; i < blobs; i++) {
     const c = new THREE.Mesh(G.crown, mat);
     const r = (tall ? 1.1 : 1.4 + R() * 1.1) * s;
-    c.scale.set(r * (0.9 + R() * 0.3), tall ? r * 4 : r * (0.8 + R() * 0.3), r);
-    c.position.set((R() - 0.5) * s * 1.6, h + (tall ? r * 2.6 : r * 0.6) + i * 0.4 * s, (R() - 0.5) * s);
-    c.rotation.set(R() * 3, R() * 3, R() * 3);
+    if (tall) {
+      // a poplar: one upright column that starts low on the trunk; spin it
+      // only about its own axis so it never tips over
+      c.scale.set(r * (0.9 + R() * 0.3), r * 4, r);
+      c.position.set(0, h * 0.45 + r * 4, 0);
+      c.rotation.y = R() * 3;
+    } else {
+      c.scale.set(r * (0.9 + R() * 0.3), r * (0.8 + R() * 0.3), r);
+      c.position.set((R() - 0.5) * s * 1.6, h + r * 0.6 + i * 0.4 * s, (R() - 0.5) * s);
+      c.rotation.set(R() * 3, R() * 3, R() * 3);
+    }
     t.add(c);
   }
   t.position.set(x, GROUND_Y, z);
@@ -1166,6 +1191,7 @@ function applyEnv() {
   U.uNight.value = env.night;
   U.uWind.value = env.wind;
   U.uRain.value = env.rain;
+  U.uCloudShade.value = env.cloud;
   sky.material.uniforms.uTop.value.copy(env.top);
   sky.material.uniforms.uHor.value.copy(env.hor);
   sky.material.uniforms.uMoonDir.value.copy(env.moonDir);
