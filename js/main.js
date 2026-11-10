@@ -4,7 +4,6 @@ import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 import { FLOWERS, COLS, ROWS, rng, buildAtlas, brushCanvas, paperCanvas, grainCanvas, signCanvas, buildPages, cellRect } from './paint.js';
 import { computeEnv, rollWeather, WEATHERS } from './env.js';
 import * as UI from './ui.js';
-import { PLACES, buildPlace } from './places.js';
 
 await Promise.all([
   document.fonts.load('64px "Pinyon Script"'),
@@ -17,19 +16,13 @@ const CAM_POS = new THREE.Vector3(0, 1.32, 1.3);
 const CAM_TARGET = new THREE.Vector3(0, 1.38, -1);
 const WALL_Z = -1.0;
 const WIN = { cx: 0, cy: 1.5, w: 1.9, h: 1.1, r: 0.24 };
-const GROUND_Y = -0.9; // the fields lie below the embankment the line runs on
-// Each stretch of line is one long flower field; everything else lies beyond
-// it in the distance. The same tables drive the shaders and the scenery.
+const GROUND_Y = 0.45;
+// Each stretch of line is one flower field, then open countryside before the
+// next: roughly the rhythm of a real ride. Field lengths vary per stretch, and
+// the same tables drive the shaders and the CPU-side scenery.
 const L = 440, GAP = 3.5, PERIOD = L * 16, WRAP = PERIOD * 16;
-const FIELD_END = Array(16).fill(L - GAP - 2); // fields run end to end, a path between each
+const FIELD_END = (() => { const R = rng(31); return Array.from({ length: 16 }, () => 200 + R() * 90); })();
 const COUNTRY = [1, 0, 2, 1, 0, 1, 2, 0, 1, 2, 0, 1, 0, 2, 1, 0]; // 0 meadow, 1 rice paddy, 2 ploughed
-// Each field has a place behind it, chosen to suit the flower and its
-// colour (see places.js). These tables feed the shaders.
-const WATER = PLACES.map((p) => p.water);
-const GRADE = PLACES.map((p) => new THREE.Color(1, 1, 1).lerp(new THREE.Color(p.grade[0]), p.grade[1]));
-const MIST = PLACES.map((p) => p.mist);
-const RISE = PLACES.map((p) => p.rise), ROUGH = PLACES.map((p) => p.rough);
-const linear = (c) => new THREE.Color(c);
 const LAMP = { sp: 32, off: 12, z: -5.5 };
 const POLE = { sp: 48, off: 30, z: -1.9 };
 const SPEED = 10;
@@ -90,71 +83,21 @@ const U = {
   uSunCol: { value: new THREE.Color() }, uAmb: { value: new THREE.Color() },
   uSunDir: { value: new THREE.Vector3(0, 1, 0) },
   uFogCol: { value: new THREE.Color() }, uFogNear: { value: 40 }, uFogFar: { value: 400 },
-  uNight: { value: 0 }, uWind: { value: 0.2 }, uRain: { value: 0 }, uCloudShade: { value: 0.1 },
+  uNight: { value: 0 }, uWind: { value: 0.2 }, uRain: { value: 0 },
   uLampCol: { value: new THREE.Color('#ffb066') },
   uLampSp: { value: LAMP.sp }, uLampOff: { value: LAMP.off }, uLampZ: { value: LAMP.z },
   uL: { value: L }, uGap: { value: GAP }, uGroundY: { value: GROUND_Y },
-  uFEnd: { value: FIELD_END }, uCountry: { value: COUNTRY }, uWater: { value: WATER },
-  uFarCol: { value: PLACES.map((p) => linear(p.far)) }, uHillCol: { value: PLACES.map((p) => linear(p.hill)) },
-  uWaterCol: { value: PLACES.map((p) => linear(p.waterCol)) }, uRiseK: { value: PLACES.map((p) => p.rise) },
-  uPeakK: { value: PLACES.map((p) => p.peaks) }, uShore: { value: PLACES.map((p) => p.shore) },
-  uRough: { value: PLACES.map((p) => p.rough) }, uRidge: { value: PLACES.map((p) => p.ridge) }, uPat: { value: PLACES.map((p) => p.pat) },
-  uCarpet: { value: PLACES.map((p) => p.carpet) }, uFlowerTint: { value: FLOWERS.map((f) => new THREE.Color(f.tint)) },
+  uFEnd: { value: FIELD_END }, uCountry: { value: COUNTRY },
 };
 
 const GLSL_COMMON = /* glsl */`
 uniform float uTravel, uTime, uNight, uFogNear, uFogFar, uLampSp, uLampOff, uLampZ, uL, uGap, uGroundY, uWind, uRain;
 uniform vec3 uSunCol, uAmb, uSunDir, uFogCol, uLampCol;
-uniform float uFEnd[16], uCountry[16], uCloudShade, uWater[16], uRiseK[16], uPeakK[16], uShore[16], uRough[16], uRidge[16], uPat[16], uCarpet[16];
-uniform vec3 uFarCol[16], uHillCol[16], uWaterCol[16], uFlowerTint[16];
-// a per-place value at this point of the line, eased across the joins
-float segF(float a[16], float tx, float wid){
-  float fi = floor(tx/uL), local = tx - fi*uL;
-  float p = a[int(mod(fi - 1., 16.))], c = a[int(mod(fi, 16.))], n = a[int(mod(fi + 1., 16.))];
-  return mix(mix(p, c, smoothstep(-wid, wid, local)), n, smoothstep(uL - wid, uL + wid, local));
-}
-vec3 segV3(vec3 a[16], float tx, float wid){
-  float fi = floor(tx/uL), local = tx - fi*uL;
-  vec3 p = a[int(mod(fi - 1., 16.))], c = a[int(mod(fi, 16.))], n = a[int(mod(fi + 1., 16.))];
-  return mix(mix(p, c, smoothstep(-wid, wid, local)), n, smoothstep(uL - wid, uL + wid, local));
-}
+uniform float uFEnd[16], uCountry[16];
 float hash12(vec2 p){ vec3 p3 = fract(vec3(p.xyx) * .1031); p3 += dot(p3, p3.yzx + 33.33); return fract((p3.x + p3.y) * p3.z); }
 float vnoise(vec2 p){ vec2 i = floor(p), f = fract(p); vec2 u = f*f*(3.-2.*f);
   return mix(mix(hash12(i), hash12(i+vec2(1,0)), u.x), mix(hash12(i+vec2(0,1)), hash12(i+vec2(1,1)), u.x), u.y); }
 float fbm(vec2 p){ float v = 0., a = .5; for(int i=0;i<5;i++){ v += a*vnoise(p); p = p*2.03 + 17.1; a *= .5; } return v; }
-// how much of this stretch of line has water of a kind (1 sea, 2 lake),
-// blended across the joins between stretches
-float waterW(float tx, float kind, float wid){
-  float fi = floor(tx/uL), local = tx - fi*uL;
-  float p = step(abs(uWater[int(mod(fi - 1., 16.))] - kind), .5);
-  float a = step(abs(uWater[int(mod(fi, 16.))] - kind), .5);
-  float b = step(abs(uWater[int(mod(fi + 1., 16.))] - kind), .5);
-  return mix(mix(p, a, smoothstep(-wid, wid, local)), b, smoothstep(uL - wid, uL + wid, local));
-}
-// the shoreline: just past the flowers, pushed out round a headland mid-stretch
-float shoreZ(float tx){
-  float local = tx - floor(tx/uL)*uL;
-  float head = smoothstep(230., 270., local) * smoothstep(350., 310., local);
-  return -segF(uShore, tx, 40.) - 5.*fbm(vec2(tx*.03, 7.)) - 44.*head;
-}
-// Beyond the flowers the land rises into hills, so farms, lakes and villages
-// show over the field. Flat where there is water. Mirrored by riseAt() in JS.
-float riseAt(float tx, float z){
-  float lake = waterW(tx, 2., 60.), sea = waterW(tx, 1., 60.);
-  float R = max(2., 7. + 5.*sin(tx*.0047) + 3.*sin(tx*.013 + 1.3));
-  // rolling hills and hollows, from a few crossed waves (rolls() in JS)
-  float rolls = sin(tx*.021 + z*.013)*.5 + sin(tx*.047 - z*.031 + 1.7)*.3 + sin(tx*.009 + z*.027 + 4.1)*.6 + sin(tx*.083 + z*.06 + 2.3)*.15;
-  float land = R * segF(uRiseK, tx, 80.) * smoothstep(-44., -154., z)
-             + segF(uRough, tx, 80.) * smoothstep(-44., -95., z) * (rolls + 1.6) * 3.;
-  return land * (1. - max(sea, lake));
-}
-// Where the field spills on beyond the foreground: it carries straight on for a
-// while, then breaks into drifts that sweep across the hills.
-float carpetAt(float tx, float z){
-  float m = smoothstep(.4, .56, fbm(vec2(tx*.012, z*.025) + 3.));
-  m = max(m, smoothstep(-62., -44., z));
-  return m * segF(uCarpet, tx, 80.);
-}
 vec3 lampLight(float tx, float z, float y){
   float lx = floor((tx - uLampOff)/uLampSp + .5)*uLampSp + uLampOff;
   float dx = tx - lx, dz = z - uLampZ, dy = y - (uGroundY + 3.0);
@@ -207,77 +150,45 @@ sky.renderOrder = -10;
 scene.add(sky);
 
 // ---------- distant hills ----------
-function hillLayer(z, base, amp, freq, shade, haze, bumpy, seed, peak = 0, seaKeep = 0, overLake = 0, carpetK = 0) {
+function hillLayer(z, base, amp, freq, color, haze, bumpy, seed) {
   const m = new THREE.Mesh(
-    new THREE.PlaneGeometry(2400, 420),
+    new THREE.PlaneGeometry(2400, 220),
     new THREE.ShaderMaterial({
       fog: false,
-      uniforms: { ...U, uBase: { value: base }, uAmp: { value: amp }, uFreq: { value: freq }, uShade: { value: shade }, uHaze: { value: haze }, uBumpy: { value: bumpy }, uSeed: { value: seed }, uPeak: { value: peak }, uSeaKeep: { value: seaKeep }, uOverLake: { value: overLake }, uCarpetK: { value: carpetK } },
+      uniforms: { ...U, uBase: { value: base }, uAmp: { value: amp }, uFreq: { value: freq }, uColor: { value: new THREE.Color(color) }, uHaze: { value: haze }, uBumpy: { value: bumpy }, uSeed: { value: seed } },
       vertexShader: `varying vec3 vW; void main(){ vec4 w = modelMatrix*vec4(position,1.); vW = w.xyz; gl_Position = projectionMatrix*viewMatrix*w; }`,
       fragmentShader: GLSL_COMMON + /* glsl */`
-        uniform float uBase, uAmp, uFreq, uHaze, uBumpy, uSeed, uPeak, uSeaKeep, uOverLake, uShade, uCarpetK;
+        uniform float uBase, uAmp, uFreq, uHaze, uBumpy, uSeed; uniform vec3 uColor;
         varying vec3 vW;
         void main(){
           float tx = vW.x + uTravel;
           float h = uBase + uAmp * (fbm(vec2(tx*uFreq + uSeed, uSeed)) - .25);
           h += uBumpy * (abs(sin(tx*.35 + vnoise(vec2(tx*.08, uSeed))*6.)) * 1.6 + vnoise(vec2(tx*.6, 3.))*1.4);
-          // mountain ranges rise out of the plain for a while, then fall away
-          float range = 0.;
-          if (uPeak > 0.) {
-            // broad massifs with rounded shoulders: warped, low-frequency
-            // noise rather than sharp ridges
-            range = smoothstep(.3, .65, fbm(vec2(tx*.0005 + uSeed*3., 1.7)));
-            float warp = fbm(vec2(tx*.0012, 9.));
-            float m = fbm(vec2(tx*uFreq*1.1 + warp*2.5 + uSeed, 5.));
-            m = smoothstep(.25, .85, m);
-            float pk = uPeak * segF(uPeakK, tx, 200.);
-            h += pk * range * (m*m*(3. - 2.*m)) + pk*.08*range*vnoise(vec2(tx*.03, 2.));
-          }
-          // over the sea the land falls away, leaving only distant headlands
-          h = uBase + (h - uBase) * segF(uRidge, tx, 160.);
-          float sw = waterW(tx, 1., 160.);
-          h = mix(h, uBase - 60. + (h - uBase)*uSeaKeep, sw);
-          h = mix(h, uBase - 60., waterW(tx, 2., 160.)*(1. - uOverLake));
           if (vW.y > h) discard;
           float rim = smoothstep(h - 3., h, vW.y);
           float n = vnoise(vec2(tx*uFreq*25., vW.y*.35));
-          vec3 c = segV3(uHillCol, tx, 160.) * uShade * (uAmb + uSunCol*.55) * (.82 + .22*rim + .16*n);
-          if (uPeak > 0.) {
-            // rocky streaks, lit faces, then snow above the line
-            float streak = vnoise(vec2(tx*.05, vW.y*.03));
-            c *= .9 + .2*streak;
-            // snow only near the summits, patchy, bluish in the haze
-            float snowLine = h - 10. - 8.*vnoise(vec2(tx*.02, 4.));
-            float snow = smoothstep(snowLine, snowLine + 6., vW.y + (streak - .5)*12.)
-              * smoothstep(uBase + uPeak*.5, uBase + uPeak*.65, h) * (1. - sw);
-            c = mix(c, vec3(.86,.9,1.)*(uAmb*.8 + uSunCol*.45), snow*.8);
-          }
-          // flowers sweeping up the slopes, below the snow
-          float fm = smoothstep(.44, .6, fbm(vec2(tx*.009 + uSeed, vW.y*.045))) * segF(uCarpet, tx, 160.) * uCarpetK;
-          fm *= smoothstep(h - 2., h - 14., vW.y - 30.*step(uPeak, .5)); // keep mountain summits clear
-          c = mix(c, segV3(uFlowerTint, tx, 160.) * (uAmb + uSunCol*.55) * (.85 + .25*n), fm*.85);
+          vec3 c = uColor * (uAmb + uSunCol*.55) * (.82 + .22*rim + .16*n);
           c += uLampCol * uNight * .04 * step(.985, hash12(floor(vec2(tx*.4, vW.y*.8)))) * step(vW.y, h - 1.);
-          c = mix(c, uFogCol, clamp(uHaze*.55 + (uFogNear < 10. ? .5 : 0.), 0., 1.));
+          c = mix(c, uFogCol, clamp(uHaze + (uFogNear < 10. ? .5 : 0.), 0., 1.));
           gl_FragColor = vec4(c, 1.);
         }`,
     })
   );
-  m.position.set(0, GROUND_Y + 200, z);
+  m.position.set(0, GROUND_Y + 100, z);
   scene.add(m);
   return m;
 }
-hillLayer(-640, GROUND_Y + 10, 30, 0.002, 1.2, 0.4, 0, 5.3, 130, 0.35, 1, 0.3);
-hillLayer(-560, GROUND_Y + 40, 70, 0.0025, 1.05, 0.55, 0, 3.1, 0, 0, 1, 0.5);
-hillLayer(-330, GROUND_Y + 14, 36, 0.005, 0.8, 0.35, 0, 8.7, 0, 0, 0, 0.8);
-hillLayer(-150, GROUND_Y + 12, 6, 0.02, 0.6, 0.18, 1, 1.3, 0, 0, 0, 1);
+hillLayer(-560, GROUND_Y + 40, 70, 0.0025, '#6f86a8', 0.55, 0, 3.1);
+hillLayer(-330, GROUND_Y + 14, 36, 0.005, '#4f6a6a', 0.35, 0, 8.7);
+hillLayer(-150, GROUND_Y + 3, 6, 0.02, '#2f4a2a', 0.18, 1, 1.3);
 
 // ---------- ground ----------
 const ground = new THREE.Mesh(
-  new THREE.PlaneGeometry(1600, 600, 200, 75).rotateX(-Math.PI / 2).translate(0, GROUND_Y, -300 - 1.25),
+  new THREE.PlaneGeometry(1600, 600).rotateX(-Math.PI / 2).translate(0, GROUND_Y, -300 - 1.25),
   new THREE.ShaderMaterial({
     fog: false,
     uniforms: { ...U, uTints: { value: FLOWERS.map((f) => new THREE.Color(f.tint)) }, uRows: { value: FLOWERS.map((f) => f.rows) } },
-    vertexShader: GLSL_COMMON + `varying vec3 vW; void main(){ vec4 w = modelMatrix*vec4(position,1.); w.y += riseAt(w.x + uTravel, w.z); vW = w.xyz; gl_Position = projectionMatrix*viewMatrix*w; }`,
+    vertexShader: `varying vec3 vW; void main(){ vec4 w = modelMatrix*vec4(position,1.); vW = w.xyz; gl_Position = projectionMatrix*viewMatrix*w; }`,
     fragmentShader: GLSL_COMMON + /* glsl */`
       uniform vec3 uTints[16]; uniform float uRows[16];
       varying vec3 vW;
@@ -286,12 +197,11 @@ const ground = new THREE.Mesh(
         float fi = floor(tx/uL); int t = int(mod(fi, 16.)); float local = tx - fi*uL;
         float n1 = fbm(vec2(tx*.16, z*.45)), n2 = vnoise(vec2(tx*1.1, z*5.));
         vec3 col = mix(vec3(.08,.15,.045), vec3(.19,.26,.08), n1) * (.8 + .4*n2);
-        float bed = smoothstep(-1.3, -2.2, z) * smoothstep(-50., -39., z);
+        float bed = smoothstep(-1.3, -2.2, z) * smoothstep(-60., -46., z);
         float fEnd = uFEnd[t]; int ck = int(uCountry[t]);
-        float band = smoothstep(-15., -13., z); // flowers by the line, all the way along
-        float inField = mix(smoothstep(uGap, uGap + 3., local) * smoothstep(fEnd, fEnd - 3., local), smoothstep(uGap, uGap + 3., local), band);
-        float onPath = step(local, uGap) + step(fEnd + .8, local) * step(local, fEnd + .8 + uGap) * (1. - band);
-        float country = step(fEnd + .8 + uGap, local) * (1. - band);
+        float inField = smoothstep(uGap, uGap + 3., local) * smoothstep(fEnd, fEnd - 3., local);
+        float onPath = step(local, uGap) + step(fEnd + .8, local) * step(local, fEnd + .8 + uGap);
+        float country = step(fEnd + .8 + uGap, local);
         vec3 soil = vec3(.15,.1,.06) * (.8 + .4*n2);
         vec3 bedCol = mix(vec3(.07,.13,.04), uTints[t]*.6, smoothstep(-5., -32., z)*.85);
         if (uRows[t] > .5 && fract(tx/1.5) < .28) bedCol = mix(soil, bedCol, smoothstep(-25., -45., z));
@@ -301,9 +211,9 @@ const ground = new THREE.Mesh(
         if (ck == 1) {
           // rice paddies: bright young rice in plots split by low earth bunds,
           // some still flooded and catching the sky
-          cc = vec3(.26,.42,.12) * (.85 + .3*n1);
+          cc = vec3(.2,.38,.07) * (.85 + .3*n1);
           vec2 plot = vec2(tx/11., z/9.);
-          if (hash12(floor(plot) + fi) < .35) cc = mix(cc, vec3(.2,.32,.26) + uFogCol*.12, .7 - .2*n2);
+          if (hash12(floor(plot) + fi) < .35) cc = mix(cc, uFogCol*.55 + vec3(.0,.04,.03), .6 - .3*n2);
           float bund = max(step(fract(plot.x), .06), step(fract(plot.y), .08));
           cc = mix(cc, vec3(.2,.17,.09)*(.8+.4*n2), bund*.8);
         } else if (ck == 2) {
@@ -317,63 +227,12 @@ const ground = new THREE.Mesh(
           cc = mix(cc, sp > .5 ? vec3(.9,.85,.6) : vec3(.8,.5,.6), step(.985, sp) * smoothstep(-25., -6., z));
         }
         col = mix(col, cc, bed*country);
-        // beyond the flowers the ground takes the place's own colour
-        vec3 farC = segV3(uFarCol, tx, 60.) * (.82 + .3*n1) * (.92 + .16*n2);
-        float pat = uPat[t];
-        if (pat > .5 && pat < 1.5) {
-          // salt crust: pale polygons with darker seams, and shallow pools of sky
-          vec2 q = vec2(tx*.09, z*.22) + .4*vec2(vnoise(vec2(tx*.03, z*.05)), vnoise(vec2(z*.04, tx*.02)));
-          vec2 f = abs(fract(q) - .5);
-          float seam = smoothstep(.44, .5, max(f.x, f.y));
-          farC = mix(vec3(.93,.95,.9)*(.92 + .1*n2), vec3(.7,.78,.72), seam*.7);
-          float pool = smoothstep(.62, .68, fbm(vec2(tx*.012, z*.03)));
-          farC = mix(farC, uFogCol*1.05, pool*.8);
-        } else if (pat > 1.5) {
-          // wind ripples across the dunes
-          farC *= .9 + .14*sin(tx*.9 + z*1.7 + 3.*vnoise(vec2(tx*.05, z*.1)));
-        }
-        col = mix(col, farC, smoothstep(-40., -50., z));
-        // the field running on across the land: speckled with the flower's colour
-        float carpet = carpetAt(tx, z) * smoothstep(-40., -47., z);
-        if (carpet > 0.) {
-          vec3 ft = uFlowerTint[t];
-          float sp = vnoise(vec2(tx*1.7, z*2.3)), sp2 = vnoise(vec2(tx*4.1, z*5.3));
-          vec3 cc = ft * mix(.68, 1.12, sp);
-          cc = mix(cc, farC*.75, step(.72, sp2)*.45); // leaves showing through
-          col = mix(col, cc, smoothstep(0., .35, carpet));
-        }
-        // sea or a wide lake beyond the shore
-        float sea = waterW(tx, 1., 40.), lake = waterW(tx, 2., 40.);
-        float zs = shoreZ(tx);
-        float wet = 0.;
-        vec3 wcol = vec3(0.);
-        if (sea > 0.) {
-          float s = smoothstep(zs + .5, zs - .5, z);
-          col = mix(col, vec3(.55,.5,.4)*(.8+.4*n2), sea*smoothstep(zs + 4., zs + 1., z)*(1. - s));
-          wet = sea*s;
-          vec3 wc = segV3(uWaterCol, tx, 60.);
-          wcol = mix(wc*.75, wc*1.15 + .03, smoothstep(-60., -300., z));
-        }
-        if (lake > 0.) {
-          float s = smoothstep(zs + .5, zs - .5, z);
-          col = mix(col, vec3(.3,.36,.16)*(.8+.4*n2), lake*smoothstep(zs + 4., zs + 1., z)*(1. - s)); // reedy bank
-          wet = max(wet, lake*s);
-          vec3 lc = segV3(uWaterCol, tx, 60.);
-          wcol = mix(wcol, mix(lc*.8, lc*1.1 + .03, smoothstep(-60., -300., z)), lake);
-        }
-        if (wet > 0.) {
-          // ripples and glints of sky
-          float rip = vnoise(vec2(tx*.6, z*3.)) * vnoise(vec2(tx*.15 + uTime*.3, z*.8));
-          wcol = mix(wcol, uFogCol, .08 + .12*rip);
-          wcol += uSunCol * pow(rip, 3.) * .5 * (1. - uNight);
-          col = mix(col, wcol, wet);
-        }
+        float far = smoothstep(-58., -80., z);
+        float h = hash12(floor(vec2(tx/48., z/26.)));
+        vec3 patchC = h < .22 ? vec3(.45,.4,.1) : h < .5 ? vec3(.15,.23,.07) : h < .68 ? vec3(.3,.27,.12) : h < .85 ? vec3(.22,.3,.1) : vec3(.34,.24,.14);
+        col = mix(col, patchC*(.8+.4*n1), far*.7);
         col *= 1. - uRain*.25;
-        vec3 nrm = normalize(cross(dFdx(vW), dFdy(vW)));
-        if (nrm.y < 0.) nrm = -nrm;
-        float slope = mix(max(uSunDir.y, 0.)*.9 + .1, max(dot(nrm, uSunDir), 0.)*.72 + .05, smoothstep(-42., -60., z)); // gentler on the far land so its colour isn't bleached
-        vec3 c = col * (uAmb*(.75 + .25*nrm.y) + uSunCol*slope);
-        if (wet > 0.) c = mix(c, wcol * (uAmb*.6 + uSunCol*.4) + wcol*.15, wet);
+        vec3 c = col * (uAmb + uSunCol*(max(uSunDir.y, 0.)*.9 + .1));
         c += col * lampLight(tx, z, uGroundY);
         gl_FragColor = vec4(fogIt(c, vW), 1.);
       }`,
@@ -390,11 +249,11 @@ function buildFlowerField() {
   geo.setAttribute('uv', base.attributes.uv);
   const aBase = [], aRand = [], aKind = [];
   const R = rng(7);
-  for (let z = -1.75; z > -78;) {
+  for (let z = -1.75; z > -47;) {
     const d = CAM_POS.z - z;
     const W = 2 * (0.5 * d + 2.6);
     const dz = 0.05 + -z * 0.01;
-    const densF = z > -6 ? 24 : z > -18 ? 16 : z > -40 ? 10 : 6;
+    const densF = z > -6 ? 16 : z > -18 ? 11 : 7;
     const nf = Math.round(W * dz * densF), ng = Math.round(W * dz * densF * 0.55);
     for (let i = 0; i < nf + ng; i++) {
       aBase.push(-W / 2 + R() * W, z - R() * dz, W);
@@ -419,20 +278,19 @@ function buildFlowerField() {
     vertexShader: GLSL_COMMON + /* glsl */`
       attribute vec3 aBase; attribute vec4 aRand; attribute float aKind;
       uniform float uHeights[16]; uniform float uRows[16]; uniform float uHueVar[16];
-      varying vec2 vUv; varying vec3 vW; varying float vCell; varying float vHue; varying float vTop; varying vec3 vTone;
+      varying vec2 vUv; varying vec3 vW; varying float vCell; varying float vHue; varying float vTop;
       void main(){
         float W = aBase.z;
         float x = mod(aBase.x - uTravel + W*.5, W) - W*.5;
         float tx = x + uTravel;
         float fi = floor(tx/uL); int t = int(mod(fi, 16.)); float local = tx - fi*uL;
         float fEnd = uFEnd[t]; int ck = int(uCountry[t]);
-        bool band = -aBase.y < 14.; // flowers by the line, all the way along
-        bool country = local > fEnd + .8 + uGap && !band;
+        bool country = local > fEnd + .8 + uGap;
         bool isF = aKind < .5 && !country;
         float far = max(0., -aBase.y - 6.) / 40.;
-        float h = isF ? uHeights[t]*(.9 + .2*aRand.y) : (.28 + .32*aRand.y) * clamp(uHeights[t] / .6, .35, 1.); // grass stays below short flowers
-        h *= 1. + far*(isF ? .3 : 1.3);
-        float edge = band ? local - uGap : min(local - uGap, fEnd - local);
+        float h = isF ? uHeights[t]*(.75 + .5*aRand.y) : (.28 + .32*aRand.y);
+        h *= 1. + far*1.3;
+        float edge = min(local - uGap, fEnd - local);
         if (isF && (edge < 0. || fract(aRand.w*7.3)*6. > edge)) h = 0.;
         if (country) {
           if (ck == 1) {
@@ -445,42 +303,24 @@ function buildFlowerField() {
           } else if (ck == 2) h *= aRand.z < .2 ? .5 : 0.;
           else h *= 1.5;
         }
-        if (isF && uRows[t] > .5 && fract(tx/1.5) < .16) h = 0.;
+        if (isF && uRows[t] > .5 && fract(tx/1.5) < .3) h = 0.;
         if (!isF && !country && edge < 0. && -aBase.y < 40.) h *= .5;
         vec3 p = position;
         float sway = sin(uTime*(1.4 + aRand.z) + tx*.35 + aRand.z*6.) * (.03 + uWind*.07) + uWind*.04;
         p.x = p.x*h + sway*h*p.y*p.y;
         p.y *= h;
-        float lift = 0.;
-        if (aBase.y < -42.) {
-          // past the foreground: only where the field spills on, never on water,
-          // riding up the rolling ground
-          h *= smoothstep(.25, .45, carpetAt(tx, aBase.y)) * (isF ? 1. : .5);
-          if (max(waterW(tx, 1., 40.), waterW(tx, 2., 40.)) > .5 && aBase.y < shoreZ(tx) + 1.) h = 0.;
-          lift = riseAt(tx, aBase.y);
-        }
-        vec3 wp = vec3(x + p.x, uGroundY + p.y - .04 + lift, aBase.y);
+        vec3 wp = vec3(x + p.x, uGroundY + p.y - .04, aBase.y);
         vUv = uv; if (aRand.w > .5) vUv.x = 1. - vUv.x;
         float variant = aRand.x > .5 ? 1. : 0.;
         vCell = isF ? float(t)*2. + variant : 32. + floor(aRand.x*7.99);
         float rowHash = hash12(vec2(floor(tx/1.5), 3.));
         vHue = isF ? (uRows[t] > .5 ? rowHash - .5 : aRand.y - .5) * uHueVar[t] * 2. : 0.;
-        // Shades: broad drifts where the colour runs deeper or paler, each
-        // plant a little different, and shorter plants sitting in their
-        // neighbours' shade.
-        float drift = fbm(vec2(tx*.045, aBase.y*.11) + float(t)*3.1);
-        float hRel = isF ? h / (uHeights[t]*(1. + far*.3)) : 1.;
-        vTone = vec3(
-          (.9 + .2*aRand.z) * (.93 + .14*drift) * mix(.7, 1., smoothstep(.92, 1.08, hRel)),
-          (.92 + .16*fract(aRand.z*13.7)),
-          0.);
-        if (country && ck == 1) vTone.x *= 1.5; // young rice is a fresh, light green
         vW = wp; vTop = uv.y;
         gl_Position = projectionMatrix * viewMatrix * vec4(wp, 1.);
       }`,
     fragmentShader: GLSL_COMMON + /* glsl */`
       uniform sampler2D uAtlas;
-      varying vec2 vUv; varying vec3 vW; varying float vCell; varying float vHue; varying float vTop; varying vec3 vTone;
+      varying vec2 vUv; varying vec3 vW; varying float vCell; varying float vHue; varying float vTop;
       vec3 hueShift(vec3 c, float a){
         const vec3 k = vec3(.57735);
         float ca = cos(a), sa = sin(a);
@@ -493,21 +333,11 @@ function buildFlowerField() {
         vec4 c = texture2D(uAtlas, auv);
         if (c.a < .5) discard;
         vec3 alb = c.rgb;
-        float hue = vHue + vTone.z;
-        if (abs(hue) > .001) alb = max(hueShift(alb, hue*6.2831), 0.);
-        float lum = dot(alb, vec3(.299, .587, .114));
-        alb = max(mix(vec3(lum), alb, vTone.y), 0.);           // deeper or paler
-        alb *= mix(.6, 1., smoothstep(.06, .5, lum));           // darker petal folds
-        float soft = texture2D(uAtlas, auv, 3.).a;
-        alb *= 1. - (1. - smoothstep(.55, .97, soft)) * mix(.7, .3, smoothstep(.5, .85, lum));      // shaded edge round each bloom
-        alb *= vTone.x;
+        if (abs(vHue) > .001) alb = max(hueShift(alb, vHue*6.2831), 0.);
         alb *= 1. - uRain*.2;
-        float shade = mix(.32, 1., smoothstep(0., .6, vTop));
-        // cloud shadows drifting across the field
-        float cs = smoothstep(.42, .62, fbm(vec2((vW.x + uTravel)*.012 - uTime*.02, vW.z*.03)));
-        shade *= 1. - cs * min(uCloudShade*1.3, .55);
+        float shade = mix(.45, 1., smoothstep(0., .55, vTop));
         float back = pow(max(dot(normalize(vW - cameraPosition), uSunDir), 0.), 4.) * (1. - uNight);
-        vec3 light = uAmb*mix(vec3(.82,.86,1.12), vec3(1.), vTop)*shade + uSunCol*(.25 + .75*vTop)*shade + uSunCol*back*.9*vTop;
+        vec3 light = uAmb*shade + uSunCol*(.25 + .75*vTop)*shade + uSunCol*back*.9*vTop;
         vec3 o = alb*light + alb*lampLight(vW.x + uTravel, vW.z, vW.y);
         gl_FragColor = vec4(fogIt(o, vW), 1.);
       }`,
@@ -1251,22 +1081,22 @@ const signMats = FLOWERS.map((f) => new THREE.MeshStandardMaterial({ map: tex(si
 const woodMat = new THREE.MeshStandardMaterial({ color: '#5a4230', roughness: 0.9 });
 const signs = Array.from({ length: 3 }, () => {
   const g = new THREE.Group();
-  const board = shadowy(new THREE.Mesh(new THREE.PlaneGeometry(2.2, 0.69), signMats[0]), true, false);
-  board.position.y = GROUND_Y + 1.6;
+  const board = shadowy(new THREE.Mesh(new THREE.PlaneGeometry(1.25, 0.39), signMats[0]), true, false);
+  board.position.y = GROUND_Y + 1.05;
   for (const s of [-1, 1]) {
     const leg = shadowy(new THREE.Mesh(new THREE.BoxGeometry(0.06, 1.2, 0.06), woodMat), true, false);
-    leg.position.set(s * 0.9, GROUND_Y + 0.8, -0.04);
-    leg.scale.y = 1.4;
+    leg.position.set(s * 0.5, GROUND_Y + 0.6, -0.04);
     g.add(leg);
   }
   g.add(board);
   g.userData.board = board;
-  g.position.z = -8;
+  g.position.z = -3.4;
   outside.add(g);
   return g;
 });
 
 // ---------- the countryside behind the flowers ----------
+const THEMES = ['village', 'farm', 'hills', 'lake', 'farm', 'village', 'windmills', 'forest', 'village', 'farm', 'windmills', 'lake', 'forest', 'hills', 'farm', 'village'];
 const G = {
   box: new THREE.BoxGeometry(1, 1, 1).translate(0, 0.5, 0),
   roof: (() => {
@@ -1282,8 +1112,6 @@ const G = {
   cap: new THREE.ConeGeometry(1.25, 1.5, 8).translate(0, 0.75, 0),
   blade: new THREE.BoxGeometry(0.5, 4.2, 0.05).translate(0, 2.1, 0),
   steeple: new THREE.ConeGeometry(0.9, 4, 4).translate(0, 2, 0),
-  hip: new THREE.ConeGeometry(0.75, 0.42, 4).rotateY(Math.PI / 4).translate(0, 0.21, 0),
-  leg: new THREE.BoxGeometry(1, 1, 1).translate(0, -0.5, 0),
 };
 const mats = (list, extra = {}) => list.map((c, i) => painted(c, { size: 128, n: 300, spread: 14, len: 14, width: 4, seed: 100 + i }, { flatShading: true, ...extra }));
 const MAT = {
@@ -1297,28 +1125,17 @@ const MAT = {
   barn: painted('#a8402e', { size: 128, n: 400, spread: 14, len: 30, width: 4, angle: Math.PI / 2, seed: 141 }),
   mill: painted('#e9e2d2', { size: 128, n: 300, spread: 10, len: 14, width: 4, seed: 142 }),
   sail: new THREE.MeshStandardMaterial({ color: '#efe6d4', roughness: 0.9, side: THREE.DoubleSide }),
-  cows: [painted('#f2eee6', { size: 64, n: 60, spread: 8, len: 20, width: 10, seed: 150 }), painted('#7a4a30', { size: 64, n: 60, spread: 10, len: 20, width: 8, seed: 151 }), painted('#2c2a2a', { size: 64, n: 60, spread: 6, len: 20, width: 8, seed: 152 })],
-  wool: painted('#efe8d8', { size: 64, n: 200, spread: 12, len: 6, width: 4, seed: 153 }, { flatShading: true }),
-  hoof: new THREE.MeshStandardMaterial({ color: '#2a2422', roughness: 1 }),
-  fence: new THREE.MeshStandardMaterial({ color: '#7a6248', roughness: 1 }),
-  stone: painted('#b9b2a4', { size: 128, n: 300, spread: 12, len: 10, width: 6, seed: 154 }, { flatShading: true }),
-  jroof: painted('#3d4350', { size: 64, n: 100, spread: 8, len: 20, width: 4, seed: 155 }, { flatShading: true }),
-  jwall: painted('#efe6d4', { size: 64, n: 100, spread: 6, len: 20, width: 4, seed: 156 }),
-  vermilion: painted('#c8432e', { size: 64, n: 80, spread: 10, len: 16, width: 4, seed: 157 }),
-  blossom: painted('#f2c4d2', { size: 64, n: 200, spread: 14, len: 8, width: 5, seed: 158 }, { flatShading: true }),
-  pine: painted('#24402e', { size: 64, n: 200, spread: 10, len: 8, width: 5, seed: 159 }, { flatShading: true }),
   water: new THREE.MeshBasicMaterial({ map: tex(brushCanvas('#8098b0', { size: 256, n: 1400, spread: 26, len: 40, width: 3, angle: 0, seed: 143 }), { repeat: [6, 2] }) }),
 };
 const pick = (arr, R) => arr[Math.floor(R() * arr.length)];
 
-
-function addTree(g, R, x, z, s = 1, tall = false, leaf = null) {
+function addTree(g, R, x, z, s = 1, tall = false) {
   const t = new THREE.Group();
   const h = (tall ? 2.2 : 1.6 + R() * 1.4) * s;
   const trunk = new THREE.Mesh(G.trunk, MAT.trunk);
   trunk.scale.set(s * 1.5, h, s * 1.5);
   t.add(trunk);
-  const mat = leaf ?? pick(MAT.greens, R);
+  const mat = pick(MAT.greens, R);
   const blobs = tall ? 1 : 2 + Math.floor(R() * 2);
   for (let i = 0; i < blobs; i++) {
     const c = new THREE.Mesh(G.crown, mat);
@@ -1346,7 +1163,7 @@ function addHouse(g, R, x, z, o = {}) {
   const body = new THREE.Mesh(G.box, o.wall ?? pick(MAT.walls, R));
   body.scale.set(w, h, d);
   const roof = new THREE.Mesh(G.roof, o.roof ?? pick(MAT.roofs, R));
-  const sy = (Math.min(w, d) * 0.48) / 0.45;
+  const sy = (h * 0.62) / 0.45;
   if (o.ridgeX ?? R() < 0.6) { roof.rotation.y = Math.PI / 2; roof.scale.set(d * 1.12, sy, w * 1.08); }
   else roof.scale.set(w * 1.1, sy, d * 1.1);
   roof.position.y = h;
@@ -1392,62 +1209,97 @@ function addWindmill(g, R, x, z, spinners) {
   g.add(m);
 }
 
-function addLighthouse(g, x, z, white = false) {
-  const l = new THREE.Group();
-  const tower = new THREE.Mesh(G.tower, MAT.mill);
-  tower.scale.set(0.9, 2.2, 0.9);
-  const band = new THREE.Mesh(G.trunk, white ? MAT.mill : MAT.vermilion);
-  band.scale.set(9, 2.2, 9);
-  band.position.y = 8;
-  const lamp = new THREE.Mesh(G.box, MAT.win);
-  lamp.scale.set(1.3, 1.4, 1.3);
-  lamp.position.y = 15.4;
-  const cap = new THREE.Mesh(G.cap, MAT.vermilion);
-  cap.scale.set(0.8, 0.9, 0.8);
-  cap.position.y = 16.8;
-  l.add(tower, band, lamp, cap);
-  l.position.set(x, GROUND_Y, z);
-  g.add(l);
-}
-
-const placeKit = { THREE, L, GROUND_Y, painted, G, MAT, addHouse, addTree, addLighthouse };
-
 function spawnField(k) {
   const g = new THREE.Group();
   const R = rng(k * 7919 + 13);
   const t16 = ((k % 16) + 16) % 16;
+  const theme = THEMES[t16];
+  const fEnd = FIELD_END[t16];
   const spinners = [];
-  buildPlace(PLACES[t16].name, placeKit, g, R);
+  const zr = (a, b) => -(a + R() * (b - a));
+  const xr = (a, b) => a + R() * (b - a);
+  const bale = (x, z) => {
+    const b = new THREE.Mesh(G.bale, MAT.bale);
+    b.scale.setScalar(0.9 + R() * 0.3);
+    b.position.set(x, GROUND_Y + 0.55, z);
+    b.rotation.y = R() * 3;
+    g.add(b);
+  };
+  // Villages and farmsteads gather in clusters, the way they do from a train,
+  // with scattered trees and the odd house between them.
+  const cx = xr(60, L - 60);
+  switch (theme) {
+    case 'farm': {
+      addHouse(g, R, cx, zr(58, 70), { wall: MAT.walls[3], roof: MAT.roofs[0], ridgeX: true });
+      addHouse(g, R, cx - xr(10, 18), zr(68, 80), { wall: MAT.barn, roof: MAT.roofs[2], w: 7, d: 6, h: 4.5, ridgeX: false });
+      for (let i = 0; i < 14; i++) bale(cx + xr(-60, 60), zr(50, 64));
+      for (let i = 0; i < 18; i++) addTree(g, R, xr(0, L), zr(60, 90), 1 + R() * 0.4);
+      break;
+    }
+    case 'village': {
+      const n = 9 + Math.floor(R() * 5);
+      for (let i = 0; i < n; i++) addHouse(g, R, cx + (i / n - 0.5) * 110 + xr(-4, 4), zr(56, 82));
+      if (R() < 0.7) {
+        const c = new THREE.Group();
+        const body = new THREE.Mesh(G.box, MAT.walls[0]);
+        body.scale.set(3, 7, 3);
+        const st = new THREE.Mesh(G.steeple, MAT.roofs[2]);
+        st.position.y = 7;
+        st.rotation.y = Math.PI / 4;
+        c.add(body, st);
+        c.position.set(cx + xr(-30, 30), GROUND_Y, zr(80, 90));
+        g.add(c);
+      }
+      for (let i = 0; i < 3; i++) addHouse(g, R, xr(0, L), zr(60, 85));
+      for (let i = 0; i < 20; i++) addTree(g, R, xr(0, L), zr(54, 92), 0.9 + R() * 0.5, R() < 0.3);
+      break;
+    }
+    case 'windmills': {
+      const n = 4 + Math.floor(R() * 3);
+      for (let i = 0; i < n; i++) addWindmill(g, R, (i + 0.3 + R() * 0.4) * (L / n), zr(60, 85), spinners);
+      addHouse(g, R, cx, zr(55, 65));
+      for (let i = 0; i < 12; i++) addTree(g, R, xr(0, L), zr(55, 90), 1);
+      break;
+    }
+    case 'forest': {
+      for (let i = 0; i < 70; i++) addTree(g, R, cx + xr(-90, 90), zr(52, 92), 1 + R() * 0.7, R() < 0.25);
+      for (let i = 0; i < 14; i++) addTree(g, R, xr(0, L), zr(55, 92), 1 + R() * 0.5);
+      break;
+    }
+    case 'lake': {
+      const w = new THREE.Mesh(G.plane, MAT.water);
+      w.rotation.x = -Math.PI / 2;
+      w.scale.set(200, 34, 1);
+      w.position.set(cx, GROUND_Y + 0.03, -70);
+      g.add(w);
+      for (let i = 0; i < 24; i++) addTree(g, R, cx + xr(-110, 110), zr(88, 98), 1 + R() * 0.5, R() < 0.4);
+      addHouse(g, R, cx + xr(-60, 60), -92, { w: 4, d: 3, h: 2.6 });
+      for (let i = 0; i < 8; i++) addTree(g, R, cx + xr(-100, 100), zr(48, 52), 0.8);
+      for (let i = 0; i < 10; i++) addTree(g, R, xr(0, L), zr(55, 90), 1);
+      break;
+    }
+    case 'hills':
+    default: {
+      for (let i = 0; i < 28; i++) addTree(g, R, xr(0, L), zr(55, 95), 0.9 + R() * 0.6, R() < 0.6);
+      for (let i = 0; i < 3; i++) if (R() < 0.7) addHouse(g, R, xr(0, L), zr(70, 85), { roof: MAT.roofs[0] });
+    }
+  }
 
-  // sit everything on the rising ground
-  for (const c of g.children) c.position.y += riseAt(k * L + c.position.x, c.position.z);
+  // The open land between fields comes closer to the line: lone trees and
+  // hedgerows in meadows, a farmhouse by the paddies, bales on the stubble.
+  const c0 = fEnd + GAP + 4, c1 = L - 4;
+  const ck = COUNTRY[t16];
+  for (let x = c0 + xr(0, 30); x < c1; x += xr(25, 70)) {
+    if (R() < 0.45) addTree(g, R, x, zr(10, 34), 0.9 + R() * 0.5, R() < 0.2);
+    else if (R() < 0.5) for (let i = 0; i < 4 + R() * 5; i++) addTree(g, R, x + i * xr(2.5, 4), zr(28, 40), 0.8 + R() * 0.3);
+  }
+  if (ck === 1 && R() < 0.8) addHouse(g, R, xr(c0 + 10, c1 - 10), zr(26, 40), { w: 4.5, d: 3.5, h: 2.6 });
+  if (ck === 2) for (let i = 0; i < 8; i++) bale(xr(c0, c1), zr(8, 30));
+
   outside.add(g);
   return { g, spinners };
 }
 const fields = new Map();
-
-// JS twins of the shader's waterW() and riseAt(), for placing scenery
-const sstep = (a, b, x) => { const t = THREE.MathUtils.clamp((x - a) / (b - a), 0, 1); return t * t * (3 - 2 * t); };
-function waterAt(tx, kind, wid) {
-  const fi = Math.floor(tx / L), local = tx - fi * L;
-  const is = (k) => (Math.abs(WATER[((k % 16) + 16) % 16] - kind) < 0.5 ? 1 : 0);
-  const a = THREE.MathUtils.lerp(is(fi - 1), is(fi), sstep(-wid, wid, local));
-  return THREE.MathUtils.lerp(a, is(fi + 1), sstep(L - wid, L + wid, local));
-}
-function segAt(arr, tx, wid) {
-  const fi = Math.floor(tx / L), local = tx - fi * L;
-  const at = (k) => arr[((k % 16) + 16) % 16];
-  const a = THREE.MathUtils.lerp(at(fi - 1), at(fi), sstep(-wid, wid, local));
-  return THREE.MathUtils.lerp(a, at(fi + 1), sstep(L - wid, L + wid, local));
-}
-function riseAt(tx, z) {
-  tx = ((tx % WRAP) + WRAP) % WRAP;
-  const lake = waterAt(tx, 2, 40), sea = waterAt(tx, 1, 60);
-  const R = Math.max(2, 7 + 5 * Math.sin(tx * 0.0047) + 3 * Math.sin(tx * 0.013 + 1.3));
-  const rolls = Math.sin(tx * 0.021 + z * 0.013) * 0.5 + Math.sin(tx * 0.047 - z * 0.031 + 1.7) * 0.3 + Math.sin(tx * 0.009 + z * 0.027 + 4.1) * 0.6 + Math.sin(tx * 0.083 + z * 0.06 + 2.3) * 0.15;
-  const land = R * segAt(RISE, tx, 80) * sstep(-44, -154, z) + segAt(ROUGH, tx, 80) * sstep(-44, -95, z) * (rolls + 1.6) * 3;
-  return land * (1 - Math.max(sea, lake));
-}
 
 // ---------- painterly post pass ----------
 let rtScale = 1;
@@ -1455,7 +1307,7 @@ const rt = new THREE.WebGLRenderTarget(1, 1, { type: THREE.HalfFloatType, depthB
 const grainTex = tex(grainCanvas(256), { srgb: false });
 const post = new THREE.ShaderMaterial({
   depthTest: false, depthWrite: false,
-  defines: { R: 3 },
+  defines: { R: 4 },
   uniforms: { tDiffuse: { value: rt.texture }, uRes: { value: new THREE.Vector2() }, uGrain: { value: grainTex }, uTime: { value: 0 }, uExposure: { value: 1 }, uNight: { value: 0 } },
   vertexShader: `varying vec2 vUv; void main(){ vUv = uv; gl_Position = vec4(position.xy, 0., 1.); }`,
   fragmentShader: /* glsl */`
@@ -1488,8 +1340,6 @@ const post = new THREE.ShaderMaterial({
       if (v3 < best) { best = v3; col = m3; }
       col = col / max(1. - col, .001);
       col = aces(col * uExposure);
-      float luma = dot(col, vec3(.2126, .7152, .0722));
-      col = clamp(mix(vec3(luma), col, 1.22), 0., 1.);
       col = toSRGB(col);
       // warm the shadows, cool the night a touch
       float l = dot(col, vec3(.299, .587, .114));
@@ -1568,7 +1418,6 @@ function applyEnv() {
   U.uNight.value = env.night;
   U.uWind.value = env.wind;
   U.uRain.value = env.rain;
-  U.uCloudShade.value = env.cloud;
   sky.material.uniforms.uTop.value.copy(env.top);
   sky.material.uniforms.uHor.value.copy(env.hor);
   sky.material.uniforms.uMoonDir.value.copy(env.moonDir);
@@ -1790,38 +1639,13 @@ function updateProps() {
   // countryside, one group per field
   const f0 = Math.floor((travel - 90) / L), f1 = Math.floor((travel + 170) / L);
   for (const [k2, f] of fields) {
-    if (k2 < f0 || k2 > f1) {
-      outside.remove(f.g);
-      f.g.traverse((o) => { if (o.userData.own) o.geometry.dispose(); });
-      fields.delete(k2);
-    }
+    if (k2 < f0 || k2 > f1) { outside.remove(f.g); fields.delete(k2); }
   }
   for (let k2 = f0; k2 <= f1; k2++) {
     if (!fields.has(k2)) fields.set(k2, spawnField(k2));
     const f = fields.get(k2);
     f.g.position.x = k2 * L - travel;
   }
-}
-
-// Tint sky, haze and ambient light towards the current field's palette,
-// easing across the joins between stretches.
-const _grade = new THREE.Color(), _g2 = new THREE.Color();
-function applyGrade() {
-  const fi = Math.floor(travel / L), local = travel - fi * L;
-  const at = (k) => GRADE[((k % 16) + 16) % 16];
-  const ss = (a, b, x) => { const t = THREE.MathUtils.clamp((x - a) / (b - a), 0, 1); return t * t * (3 - 2 * t); };
-  _grade.copy(at(fi - 1)).lerp(at(fi), ss(-60, 60, local));
-  _g2.copy(_grade).lerp(at(fi + 1), ss(L - 60, L + 60, local));
-  U.uFogCol.value.copy(env.fog).multiply(_g2);
-  scene.fog.color.copy(U.uFogCol.value);
-  sky.material.uniforms.uHor.value.copy(env.hor).multiply(_g2);
-  sky.material.uniforms.uTop.value.copy(env.top).lerp(_grade.copy(env.top).multiply(_g2), 0.6);
-  U.uAmb.value.copy(env.amb).multiplyScalar(env.ambI * 0.75).multiply(_grade.set(1, 1, 1).lerp(_g2, 0.5));
-  const mist = segAt(MIST, travel, 60);
-  U.uFogNear.value = env.fogNear * (1 - mist * 0.5);
-  U.uFogFar.value = env.fogFar * (1 - mist * 0.5);
-  scene.fog.near = U.uFogNear.value;
-  scene.fog.far = U.uFogFar.value;
 }
 
 function frame(now) {
@@ -1842,7 +1666,6 @@ function frame(now) {
   U.uTime.value = time;
   glassMat.uniforms.uTime.value = time;
   updateProps();
-  applyGrade();
   for (const f of fields.values()) for (const s of f.spinners) s.rotation.z -= dt * s.userData.speed;
 
   // camera: parallax with the mouse, sway of the carriage
@@ -1912,5 +1735,5 @@ function frame(now) {
 
 UI.init({ pages });
 // tick(n): run n frames by hand, for testing while the page is in the background
-Object.assign(window.__three, { openJournal, closeJournal, openEnvelope, closeEnvelope, pressIntercom, U, ground, tick: (n = 1) => { for (let i = 0; i < n; i++) frame(last + 16); } });
+Object.assign(window.__three, { openJournal, closeJournal, openEnvelope, closeEnvelope, pressIntercom, tick: (n = 1) => { for (let i = 0; i < n; i++) frame(last + 16); } });
 requestAnimationFrame((t) => { last = t; frame(t); UI.reveal(); });
