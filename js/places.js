@@ -7,24 +7,25 @@
 // field.  rough: how much it rolls into hills and hollows.  ridge: how tall the
 // bands of hills behind are.  peaks: how much the far mountain range shows.
 // shore: how far back the shoreline sits.  pat: 1 salt crust, 2 dune ripples.
+// carpet: how much the flowers spill on across the land and up the hills.
 
 export const PLACES = [
-  { name: 'volcanoIsland', grade: ['#dff4ff', 0.25], far: '#7aa860', hill: '#9c94b0', water: 1, waterCol: '#1fa6b0', rise: 0, peaks: 0, mist: 0.1, shore: 46, rough: 0, ridge: 1.0, pat: 0 },
-  { name: 'saltFlats',     grade: ['#e8fff4', 0.25], far: '#c4e8d4', hill: '#7f9cc8', water: 0, waterCol: '#000000', rise: 0, peaks: 1, mist: 0.1, shore: 46, rough: 0, ridge: 0.4, pat: 1 },
-  { name: 'peachHills',    grade: ['#ffd8d0', 0.45], far: '#b8a46a', hill: '#c09a88', water: 0, waterCol: '#000000', rise: 1.6, peaks: 0, mist: 0.35, shore: 46, rough: 1.2, ridge: 1.0, pat: 0 },
-  { name: 'mistRidges',    grade: ['#cfeef0', 0.4],  far: '#5f8a70', hill: '#6f9ca4', water: 0, waterCol: '#000000', rise: 1.0, peaks: 0.6, mist: 0.6, shore: 46, rough: 0.8, ridge: 2.0, pat: 0 },
-  { name: 'oceanCliffs',   grade: ['#d6e4ff', 0.3],  far: '#5f8a4a', hill: '#3a4a60', water: 1, waterCol: '#1a3f9a', rise: 0, peaks: 0, mist: 0.1, shore: 46, rough: 0, ridge: 1.0, pat: 0 },
-  { name: 'canyon',        grade: ['#fff0dc', 0.45], far: '#d89a68', hill: '#c8704a', water: 0, waterCol: '#000000', rise: 0.6, peaks: 0.3, mist: 0.15, shore: 46, rough: 0.3, ridge: 1.2, pat: 0 },
-  { name: 'blueHills',     grade: ['#e4e4ff', 0.35], far: '#4f6e62', hill: '#4a5a9a', water: 0, waterCol: '#000000', rise: 0.9, peaks: 0, mist: 0.25, shore: 46, rough: 1.0, ridge: 1.6, pat: 0 },
-  { name: 'basalt',        grade: ['#ddd0ec', 0.45], far: '#36343a', hill: '#2e2c34', water: 0, waterCol: '#000000', rise: 0.8, peaks: 1.3, mist: 0.4, shore: 46, rough: 1.2, ridge: 1.4, pat: 0 },
-  { name: 'mistForest',    grade: ['#e4f0e4', 0.35], far: '#4a6a40', hill: '#3f6a50', water: 0, waterCol: '#000000', rise: 1.4, peaks: 0, mist: 0.65, shore: 46, rough: 1.0, ridge: 1.5, pat: 0 },
-  { name: 'chalkHills',    grade: ['#f4eeff', 0.4],  far: '#9ab088', hill: '#b4c4b0', water: 0, waterCol: '#000000', rise: 0.9, peaks: 0, mist: 0.35, shore: 46, rough: 1.3, ridge: 0.8, pat: 0 },
-  { name: 'alpineLake',    grade: ['#e0fff4', 0.3],  far: '#6a9a58', hill: '#6a8aa0', water: 2, waterCol: '#7fd8c0', rise: 0, peaks: 1.1, mist: 0.15, shore: 46, rough: 0, ridge: 1.2, pat: 0 },
-  { name: 'cottageHills',  grade: ['#fff0d8', 0.3],  far: '#7a9a58', hill: '#7a8a70', water: 0, waterCol: '#000000', rise: 1.3, peaks: 0, mist: 0.25, shore: 46, rough: 1.0, ridge: 1.0, pat: 0 },
-  { name: 'karsts',        grade: ['#e4fff0', 0.35], far: '#5a8a58', hill: '#4a7a5a', water: 2, waterCol: '#3f9a7c', rise: 0, peaks: 0, mist: 0.5, shore: 46, rough: 0, ridge: 1.0, pat: 0 },
-  { name: 'slateMoor',     grade: ['#d4e0f4', 0.4],  far: '#7a8a6a', hill: '#5a6a84', water: 0, waterCol: '#000000', rise: 0.8, peaks: 0, mist: 0.4, shore: 46, rough: 0.9, ridge: 1.2, pat: 0 },
-  { name: 'desert',        grade: ['#ffe8c4', 0.45], far: '#e0a048', hill: '#d08a48', water: 0, waterCol: '#000000', rise: 0.9, peaks: 0, mist: 0.1, shore: 46, rough: 1.4, ridge: 0.6, pat: 2 },
-  { name: 'pinkCliffs',    grade: ['#ffdcc8', 0.45], far: '#9a9a68', hill: '#c8988a', water: 1, waterCol: '#2f86b0', rise: 0, peaks: 0, mist: 0.2, shore: 46, rough: 0, ridge: 1.0, pat: 0 },
+  { name: 'volcanoIsland', grade: ['#dff4ff', 0.25], far: '#7aa860', hill: '#9c94b0', water: 1, waterCol: '#1fa6b0', rise: 0, peaks: 0, mist: 0.1, shore: 46, rough: 0, ridge: 1.0, pat: 0, carpet: 0.6 },
+  { name: 'saltFlats',     grade: ['#e8fff4', 0.25], far: '#c4e8d4', hill: '#7f9cc8', water: 0, waterCol: '#000000', rise: 0, peaks: 1, mist: 0.1, shore: 46, rough: 0, ridge: 0.4, pat: 1, carpet: 0.35 },
+  { name: 'peachHills',    grade: ['#ffd8d0', 0.45], far: '#b8a46a', hill: '#c09a88', water: 0, waterCol: '#000000', rise: 1.6, peaks: 0, mist: 0.35, shore: 46, rough: 1.2, ridge: 1.0, pat: 0, carpet: 0.8 },
+  { name: 'mistRidges',    grade: ['#cfeef0', 0.4],  far: '#5f8a70', hill: '#6f9ca4', water: 0, waterCol: '#000000', rise: 1.0, peaks: 0.6, mist: 0.6, shore: 46, rough: 0.8, ridge: 2.0, pat: 0, carpet: 0.75 },
+  { name: 'oceanCliffs',   grade: ['#d6e4ff', 0.3],  far: '#5f8a4a', hill: '#3a4a60', water: 1, waterCol: '#1a3f9a', rise: 0, peaks: 0, mist: 0.1, shore: 46, rough: 0, ridge: 1.0, pat: 0, carpet: 0.6 },
+  { name: 'canyon',        grade: ['#fff0dc', 0.45], far: '#d89a68', hill: '#c8704a', water: 0, waterCol: '#000000', rise: 0.6, peaks: 0.3, mist: 0.15, shore: 46, rough: 0.3, ridge: 1.2, pat: 0, carpet: 0.45 },
+  { name: 'blueHills',     grade: ['#e4e4ff', 0.35], far: '#4f6e62', hill: '#4a5a9a', water: 0, waterCol: '#000000', rise: 0.9, peaks: 0, mist: 0.25, shore: 46, rough: 1.0, ridge: 1.6, pat: 0, carpet: 0.8 },
+  { name: 'basalt',        grade: ['#ddd0ec', 0.45], far: '#36343a', hill: '#2e2c34', water: 0, waterCol: '#000000', rise: 0.8, peaks: 1.3, mist: 0.4, shore: 46, rough: 1.2, ridge: 1.4, pat: 0, carpet: 0.55 },
+  { name: 'mistForest',    grade: ['#e4f0e4', 0.35], far: '#4a6a40', hill: '#3f6a50', water: 0, waterCol: '#000000', rise: 1.4, peaks: 0, mist: 0.65, shore: 46, rough: 1.0, ridge: 1.5, pat: 0, carpet: 0.6 },
+  { name: 'chalkHills',    grade: ['#f4eeff', 0.4],  far: '#9ab088', hill: '#b4c4b0', water: 0, waterCol: '#000000', rise: 0.9, peaks: 0, mist: 0.35, shore: 46, rough: 1.3, ridge: 0.8, pat: 0, carpet: 0.8 },
+  { name: 'alpineLake',    grade: ['#e0fff4', 0.3],  far: '#6a9a58', hill: '#6a8aa0', water: 2, waterCol: '#7fd8c0', rise: 0, peaks: 1.1, mist: 0.15, shore: 46, rough: 0, ridge: 1.2, pat: 0, carpet: 0.6 },
+  { name: 'cottageHills',  grade: ['#fff0d8', 0.3],  far: '#7a9a58', hill: '#7a8a70', water: 0, waterCol: '#000000', rise: 1.3, peaks: 0, mist: 0.25, shore: 46, rough: 1.0, ridge: 1.0, pat: 0, carpet: 0.8 },
+  { name: 'karsts',        grade: ['#e4fff0', 0.35], far: '#5a8a58', hill: '#4a7a5a', water: 2, waterCol: '#3f9a7c', rise: 0, peaks: 0, mist: 0.5, shore: 46, rough: 0, ridge: 1.0, pat: 0, carpet: 0.5 },
+  { name: 'slateMoor',     grade: ['#d4e0f4', 0.4],  far: '#7a8a6a', hill: '#5a6a84', water: 0, waterCol: '#000000', rise: 0.8, peaks: 0, mist: 0.4, shore: 46, rough: 0.9, ridge: 1.2, pat: 0, carpet: 0.7 },
+  { name: 'desert',        grade: ['#ffe8c4', 0.45], far: '#e0a048', hill: '#d08a48', water: 0, waterCol: '#000000', rise: 0.9, peaks: 0, mist: 0.1, shore: 46, rough: 1.4, ridge: 0.6, pat: 2, carpet: 0.5 },
+  { name: 'pinkCliffs',    grade: ['#ffdcc8', 0.45], far: '#9a9a68', hill: '#c8988a', water: 1, waterCol: '#2f86b0', rise: 0, peaks: 0, mist: 0.2, shore: 46, rough: 0, ridge: 1.0, pat: 0, carpet: 0.6 },
 ];
 
 // ---------- builders ----------

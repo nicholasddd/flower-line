@@ -99,13 +99,14 @@ const U = {
   uWaterCol: { value: PLACES.map((p) => linear(p.waterCol)) }, uRiseK: { value: PLACES.map((p) => p.rise) },
   uPeakK: { value: PLACES.map((p) => p.peaks) }, uShore: { value: PLACES.map((p) => p.shore) },
   uRough: { value: PLACES.map((p) => p.rough) }, uRidge: { value: PLACES.map((p) => p.ridge) }, uPat: { value: PLACES.map((p) => p.pat) },
+  uCarpet: { value: PLACES.map((p) => p.carpet) }, uFlowerTint: { value: FLOWERS.map((f) => new THREE.Color(f.tint)) },
 };
 
 const GLSL_COMMON = /* glsl */`
 uniform float uTravel, uTime, uNight, uFogNear, uFogFar, uLampSp, uLampOff, uLampZ, uL, uGap, uGroundY, uWind, uRain;
 uniform vec3 uSunCol, uAmb, uSunDir, uFogCol, uLampCol;
-uniform float uFEnd[16], uCountry[16], uCloudShade, uWater[16], uRiseK[16], uPeakK[16], uShore[16], uRough[16], uRidge[16], uPat[16];
-uniform vec3 uFarCol[16], uHillCol[16], uWaterCol[16];
+uniform float uFEnd[16], uCountry[16], uCloudShade, uWater[16], uRiseK[16], uPeakK[16], uShore[16], uRough[16], uRidge[16], uPat[16], uCarpet[16];
+uniform vec3 uFarCol[16], uHillCol[16], uWaterCol[16], uFlowerTint[16];
 // a per-place value at this point of the line, eased across the joins
 float segF(float a[16], float tx, float wid){
   float fi = floor(tx/uL), local = tx - fi*uL;
@@ -146,6 +147,13 @@ float riseAt(float tx, float z){
   float land = R * segF(uRiseK, tx, 80.) * smoothstep(-44., -154., z)
              + segF(uRough, tx, 80.) * smoothstep(-44., -95., z) * (rolls + 1.6) * 3.;
   return land * (1. - max(sea, lake));
+}
+// Where the field spills on beyond the foreground: it carries straight on for a
+// while, then breaks into drifts that sweep across the hills.
+float carpetAt(float tx, float z){
+  float m = smoothstep(.4, .56, fbm(vec2(tx*.012, z*.025) + 3.));
+  m = max(m, smoothstep(-62., -44., z));
+  return m * segF(uCarpet, tx, 80.);
 }
 vec3 lampLight(float tx, float z, float y){
   float lx = floor((tx - uLampOff)/uLampSp + .5)*uLampSp + uLampOff;
@@ -199,15 +207,15 @@ sky.renderOrder = -10;
 scene.add(sky);
 
 // ---------- distant hills ----------
-function hillLayer(z, base, amp, freq, shade, haze, bumpy, seed, peak = 0, seaKeep = 0, overLake = 0) {
+function hillLayer(z, base, amp, freq, shade, haze, bumpy, seed, peak = 0, seaKeep = 0, overLake = 0, carpetK = 0) {
   const m = new THREE.Mesh(
     new THREE.PlaneGeometry(2400, 420),
     new THREE.ShaderMaterial({
       fog: false,
-      uniforms: { ...U, uBase: { value: base }, uAmp: { value: amp }, uFreq: { value: freq }, uShade: { value: shade }, uHaze: { value: haze }, uBumpy: { value: bumpy }, uSeed: { value: seed }, uPeak: { value: peak }, uSeaKeep: { value: seaKeep }, uOverLake: { value: overLake } },
+      uniforms: { ...U, uBase: { value: base }, uAmp: { value: amp }, uFreq: { value: freq }, uShade: { value: shade }, uHaze: { value: haze }, uBumpy: { value: bumpy }, uSeed: { value: seed }, uPeak: { value: peak }, uSeaKeep: { value: seaKeep }, uOverLake: { value: overLake }, uCarpetK: { value: carpetK } },
       vertexShader: `varying vec3 vW; void main(){ vec4 w = modelMatrix*vec4(position,1.); vW = w.xyz; gl_Position = projectionMatrix*viewMatrix*w; }`,
       fragmentShader: GLSL_COMMON + /* glsl */`
-        uniform float uBase, uAmp, uFreq, uHaze, uBumpy, uSeed, uPeak, uSeaKeep, uOverLake, uShade;
+        uniform float uBase, uAmp, uFreq, uHaze, uBumpy, uSeed, uPeak, uSeaKeep, uOverLake, uShade, uCarpetK;
         varying vec3 vW;
         void main(){
           float tx = vW.x + uTravel;
@@ -244,6 +252,10 @@ function hillLayer(z, base, amp, freq, shade, haze, bumpy, seed, peak = 0, seaKe
               * smoothstep(uBase + uPeak*.5, uBase + uPeak*.65, h) * (1. - sw);
             c = mix(c, vec3(.86,.9,1.)*(uAmb*.8 + uSunCol*.45), snow*.8);
           }
+          // flowers sweeping up the slopes, below the snow
+          float fm = smoothstep(.44, .6, fbm(vec2(tx*.009 + uSeed, vW.y*.045))) * segF(uCarpet, tx, 160.) * uCarpetK;
+          fm *= smoothstep(h - 2., h - 14., vW.y - 30.*step(uPeak, .5)); // keep mountain summits clear
+          c = mix(c, segV3(uFlowerTint, tx, 160.) * (uAmb + uSunCol*.55) * (.85 + .25*n), fm*.85);
           c += uLampCol * uNight * .04 * step(.985, hash12(floor(vec2(tx*.4, vW.y*.8)))) * step(vW.y, h - 1.);
           c = mix(c, uFogCol, clamp(uHaze*.55 + (uFogNear < 10. ? .5 : 0.), 0., 1.));
           gl_FragColor = vec4(c, 1.);
@@ -254,10 +266,10 @@ function hillLayer(z, base, amp, freq, shade, haze, bumpy, seed, peak = 0, seaKe
   scene.add(m);
   return m;
 }
-hillLayer(-640, GROUND_Y + 10, 30, 0.002, 1.2, 0.4, 0, 5.3, 130, 0.35, 1);
-hillLayer(-560, GROUND_Y + 40, 70, 0.0025, 1.05, 0.55, 0, 3.1, 0, 0, 1);
-hillLayer(-330, GROUND_Y + 14, 36, 0.005, 0.8, 0.35, 0, 8.7);
-hillLayer(-150, GROUND_Y + 12, 6, 0.02, 0.6, 0.18, 1, 1.3);
+hillLayer(-640, GROUND_Y + 10, 30, 0.002, 1.2, 0.4, 0, 5.3, 130, 0.35, 1, 0.3);
+hillLayer(-560, GROUND_Y + 40, 70, 0.0025, 1.05, 0.55, 0, 3.1, 0, 0, 1, 0.5);
+hillLayer(-330, GROUND_Y + 14, 36, 0.005, 0.8, 0.35, 0, 8.7, 0, 0, 0, 0.8);
+hillLayer(-150, GROUND_Y + 12, 6, 0.02, 0.6, 0.18, 1, 1.3, 0, 0, 0, 1);
 
 // ---------- ground ----------
 const ground = new THREE.Mesh(
@@ -321,6 +333,15 @@ const ground = new THREE.Mesh(
           farC *= .9 + .14*sin(tx*.9 + z*1.7 + 3.*vnoise(vec2(tx*.05, z*.1)));
         }
         col = mix(col, farC, smoothstep(-40., -50., z));
+        // the field running on across the land: speckled with the flower's colour
+        float carpet = carpetAt(tx, z) * smoothstep(-40., -47., z);
+        if (carpet > 0.) {
+          vec3 ft = uFlowerTint[t];
+          float sp = vnoise(vec2(tx*1.7, z*2.3)), sp2 = vnoise(vec2(tx*4.1, z*5.3));
+          vec3 cc = ft * mix(.68, 1.12, sp);
+          cc = mix(cc, farC*.75, step(.72, sp2)*.45); // leaves showing through
+          col = mix(col, cc, smoothstep(0., .35, carpet));
+        }
         // sea or a wide lake beyond the shore
         float sea = waterW(tx, 1., 40.), lake = waterW(tx, 2., 40.);
         float zs = shoreZ(tx);
@@ -369,11 +390,11 @@ function buildFlowerField() {
   geo.setAttribute('uv', base.attributes.uv);
   const aBase = [], aRand = [], aKind = [];
   const R = rng(7);
-  for (let z = -1.75; z > -40;) {
+  for (let z = -1.75; z > -78;) {
     const d = CAM_POS.z - z;
     const W = 2 * (0.5 * d + 2.6);
     const dz = 0.05 + -z * 0.01;
-    const densF = z > -6 ? 24 : z > -18 ? 16 : 10;
+    const densF = z > -6 ? 24 : z > -18 ? 16 : z > -40 ? 10 : 6;
     const nf = Math.round(W * dz * densF), ng = Math.round(W * dz * densF * 0.55);
     for (let i = 0; i < nf + ng; i++) {
       aBase.push(-W / 2 + R() * W, z - R() * dz, W);
@@ -430,7 +451,15 @@ function buildFlowerField() {
         float sway = sin(uTime*(1.4 + aRand.z) + tx*.35 + aRand.z*6.) * (.03 + uWind*.07) + uWind*.04;
         p.x = p.x*h + sway*h*p.y*p.y;
         p.y *= h;
-        vec3 wp = vec3(x + p.x, uGroundY + p.y - .04, aBase.y);
+        float lift = 0.;
+        if (aBase.y < -42.) {
+          // past the foreground: only where the field spills on, never on water,
+          // riding up the rolling ground
+          h *= smoothstep(.25, .45, carpetAt(tx, aBase.y)) * (isF ? 1. : .5);
+          if (max(waterW(tx, 1., 40.), waterW(tx, 2., 40.)) > .5 && aBase.y < shoreZ(tx) + 1.) h = 0.;
+          lift = riseAt(tx, aBase.y);
+        }
+        vec3 wp = vec3(x + p.x, uGroundY + p.y - .04 + lift, aBase.y);
         vUv = uv; if (aRand.w > .5) vUv.x = 1. - vUv.x;
         float variant = aRand.x > .5 ? 1. : 0.;
         vCell = isF ? float(t)*2. + variant : 32. + floor(aRand.x*7.99);
