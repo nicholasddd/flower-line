@@ -17,7 +17,12 @@ const CAM_TARGET = new THREE.Vector3(0, 1.38, -1);
 const WALL_Z = -1.0;
 const WIN = { cx: 0, cy: 1.5, w: 1.9, h: 1.1, r: 0.24 };
 const GROUND_Y = 0.45;
-const L = 72, GAP = 3.5, PERIOD = L * 16, WRAP = PERIOD * 80;
+// Each stretch of line is one flower field, then open countryside before the
+// next: roughly the rhythm of a real ride. Field lengths vary per stretch, and
+// the same tables drive the shaders and the CPU-side scenery.
+const L = 440, GAP = 3.5, PERIOD = L * 16, WRAP = PERIOD * 16;
+const FIELD_END = (() => { const R = rng(31); return Array.from({ length: 16 }, () => 200 + R() * 90); })();
+const COUNTRY = [1, 0, 2, 1, 0, 1, 2, 0, 1, 2, 0, 1, 0, 2, 1, 0]; // 0 meadow, 1 rice paddy, 2 ploughed
 const LAMP = { sp: 32, off: 12, z: -5.5 };
 const POLE = { sp: 48, off: 30, z: -1.9 };
 const SPEED = 10;
@@ -82,11 +87,13 @@ const U = {
   uLampCol: { value: new THREE.Color('#ffb066') },
   uLampSp: { value: LAMP.sp }, uLampOff: { value: LAMP.off }, uLampZ: { value: LAMP.z },
   uL: { value: L }, uGap: { value: GAP }, uGroundY: { value: GROUND_Y },
+  uFEnd: { value: FIELD_END }, uCountry: { value: COUNTRY },
 };
 
 const GLSL_COMMON = /* glsl */`
 uniform float uTravel, uTime, uNight, uFogNear, uFogFar, uLampSp, uLampOff, uLampZ, uL, uGap, uGroundY, uWind, uRain;
 uniform vec3 uSunCol, uAmb, uSunDir, uFogCol, uLampCol;
+uniform float uFEnd[16], uCountry[16];
 float hash12(vec2 p){ vec3 p3 = fract(vec3(p.xyx) * .1031); p3 += dot(p3, p3.yzx + 33.33); return fract((p3.x + p3.y) * p3.z); }
 float vnoise(vec2 p){ vec2 i = floor(p), f = fract(p); vec2 u = f*f*(3.-2.*f);
   return mix(mix(hash12(i), hash12(i+vec2(1,0)), u.x), mix(hash12(i+vec2(0,1)), hash12(i+vec2(1,1)), u.x), u.y); }
@@ -191,12 +198,35 @@ const ground = new THREE.Mesh(
         float n1 = fbm(vec2(tx*.16, z*.45)), n2 = vnoise(vec2(tx*1.1, z*5.));
         vec3 col = mix(vec3(.08,.15,.045), vec3(.19,.26,.08), n1) * (.8 + .4*n2);
         float bed = smoothstep(-1.3, -2.2, z) * smoothstep(-60., -46., z);
-        float inField = step(uGap, local) * step(local, uL - .6);
+        float fEnd = uFEnd[t]; int ck = int(uCountry[t]);
+        float inField = smoothstep(uGap, uGap + 3., local) * smoothstep(fEnd, fEnd - 3., local);
+        float onPath = step(local, uGap) + step(fEnd + .8, local) * step(local, fEnd + .8 + uGap);
+        float country = step(fEnd + .8 + uGap, local);
         vec3 soil = vec3(.15,.1,.06) * (.8 + .4*n2);
         vec3 bedCol = mix(vec3(.07,.13,.04), uTints[t]*.6, smoothstep(-5., -32., z)*.85);
         if (uRows[t] > .5 && fract(tx/1.5) < .28) bedCol = mix(soil, bedCol, smoothstep(-25., -45., z));
         col = mix(col, bedCol, bed*inField);
-        col = mix(col, vec3(.32,.26,.17)*(.8+.4*n2), bed*(1.-inField)*step(local, uGap));
+        col = mix(col, vec3(.32,.26,.17)*(.8+.4*n2), bed*onPath);
+        vec3 cc;
+        if (ck == 1) {
+          // rice paddies: bright young rice in plots split by low earth bunds,
+          // some still flooded and catching the sky
+          cc = vec3(.2,.38,.07) * (.85 + .3*n1);
+          vec2 plot = vec2(tx/11., z/9.);
+          if (hash12(floor(plot) + fi) < .35) cc = mix(cc, uFogCol*.55 + vec3(.0,.04,.03), .6 - .3*n2);
+          float bund = max(step(fract(plot.x), .06), step(fract(plot.y), .08));
+          cc = mix(cc, vec3(.2,.17,.09)*(.8+.4*n2), bund*.8);
+        } else if (ck == 2) {
+          // ploughed earth with a stubble edge
+          cc = vec3(.3,.22,.12) * (.75 + .5*n1) * (.8 + .25*sin(z*4.5 + n2));
+          cc = mix(cc, vec3(.42,.36,.18)*(.8+.4*n2), smoothstep(-6., -2.5, z));
+        } else {
+          // rough meadow with a sprinkle of wild flowers
+          cc = mix(vec3(.12,.22,.06), vec3(.26,.32,.1), n1) * (.8 + .4*n2);
+          float sp = hash12(floor(vec2(tx*4., z*7.)));
+          cc = mix(cc, sp > .5 ? vec3(.9,.85,.6) : vec3(.8,.5,.6), step(.985, sp) * smoothstep(-25., -6., z));
+        }
+        col = mix(col, cc, bed*country);
         float far = smoothstep(-58., -80., z);
         float h = hash12(floor(vec2(tx/48., z/26.)));
         vec3 patchC = h < .22 ? vec3(.45,.4,.1) : h < .5 ? vec3(.15,.23,.07) : h < .68 ? vec3(.3,.27,.12) : h < .85 ? vec3(.22,.3,.1) : vec3(.34,.24,.14);
@@ -254,13 +284,27 @@ function buildFlowerField() {
         float x = mod(aBase.x - uTravel + W*.5, W) - W*.5;
         float tx = x + uTravel;
         float fi = floor(tx/uL); int t = int(mod(fi, 16.)); float local = tx - fi*uL;
-        bool isF = aKind < .5;
+        float fEnd = uFEnd[t]; int ck = int(uCountry[t]);
+        bool country = local > fEnd + .8 + uGap;
+        bool isF = aKind < .5 && !country;
         float far = max(0., -aBase.y - 6.) / 40.;
         float h = isF ? uHeights[t]*(.75 + .5*aRand.y) : (.28 + .32*aRand.y);
         h *= 1. + far*1.3;
-        if (isF && (local < uGap || local > uL - .6)) h = 0.;
+        float edge = min(local - uGap, fEnd - local);
+        if (isF && (edge < 0. || fract(aRand.w*7.3)*6. > edge)) h = 0.;
+        if (country) {
+          if (ck == 1) {
+            // rice: short even tufts; nothing on the bunds or in flooded plots (matches the ground)
+            vec2 plot = vec2(tx/11., aBase.y/9.);
+            bool wet = hash12(floor(plot) + fi) < .35;
+            bool bund = fract(plot.x) < .06 || fract(plot.y) < .08;
+            h = (wet || bund) ? 0. : .32 + .12*aRand.y;
+            h *= 1. + far*1.3;
+          } else if (ck == 2) h *= aRand.z < .2 ? .5 : 0.;
+          else h *= 1.5;
+        }
         if (isF && uRows[t] > .5 && fract(tx/1.5) < .3) h = 0.;
-        if (!isF && local < uGap && -aBase.y < 40.) h *= .5;
+        if (!isF && !country && edge < 0. && -aBase.y < 40.) h *= .5;
         vec3 p = position;
         float sway = sin(uTime*(1.4 + aRand.z) + tx*.35 + aRand.z*6.) * (.03 + uWind*.07) + uWind*.04;
         p.x = p.x*h + sway*h*p.y*p.y;
@@ -916,28 +960,34 @@ function addWindmill(g, R, x, z, spinners) {
 function spawnField(k) {
   const g = new THREE.Group();
   const R = rng(k * 7919 + 13);
-  const theme = THEMES[((k % 16) + 16) % 16];
+  const t16 = ((k % 16) + 16) % 16;
+  const theme = THEMES[t16];
+  const fEnd = FIELD_END[t16];
   const spinners = [];
   const zr = (a, b) => -(a + R() * (b - a));
+  const xr = (a, b) => a + R() * (b - a);
+  const bale = (x, z) => {
+    const b = new THREE.Mesh(G.bale, MAT.bale);
+    b.scale.setScalar(0.9 + R() * 0.3);
+    b.position.set(x, GROUND_Y + 0.55, z);
+    b.rotation.y = R() * 3;
+    g.add(b);
+  };
+  // Villages and farmsteads gather in clusters, the way they do from a train,
+  // with scattered trees and the odd house between them.
+  const cx = xr(60, L - 60);
   switch (theme) {
     case 'farm': {
-      addHouse(g, R, 20 + R() * 30, zr(58, 70), { wall: MAT.walls[3], roof: MAT.roofs[0], ridgeX: true });
-      const bx = 5 + R() * 10;
-      addHouse(g, R, bx, zr(68, 80), { wall: MAT.barn, roof: MAT.roofs[2], w: 7, d: 6, h: 4.5, ridgeX: false });
-      for (let i = 0; i < 5; i++) {
-        const b = new THREE.Mesh(G.bale, MAT.bale);
-        b.scale.setScalar(0.9 + R() * 0.3);
-        b.position.set(R() * L, GROUND_Y + 0.55, zr(52, 62));
-        b.rotation.y = R() * 3;
-        g.add(b);
-      }
-      for (let i = 0; i < 4; i++) addTree(g, R, R() * L, zr(60, 85), 1 + R() * 0.4);
+      addHouse(g, R, cx, zr(58, 70), { wall: MAT.walls[3], roof: MAT.roofs[0], ridgeX: true });
+      addHouse(g, R, cx - xr(10, 18), zr(68, 80), { wall: MAT.barn, roof: MAT.roofs[2], w: 7, d: 6, h: 4.5, ridgeX: false });
+      for (let i = 0; i < 14; i++) bale(cx + xr(-60, 60), zr(50, 64));
+      for (let i = 0; i < 18; i++) addTree(g, R, xr(0, L), zr(60, 90), 1 + R() * 0.4);
       break;
     }
     case 'village': {
-      const n = 6 + Math.floor(R() * 4);
-      for (let i = 0; i < n; i++) addHouse(g, R, (i + R() * 0.6) * (L / n), zr(56, 82));
-      if (R() < 0.6) {
+      const n = 9 + Math.floor(R() * 5);
+      for (let i = 0; i < n; i++) addHouse(g, R, cx + (i / n - 0.5) * 110 + xr(-4, 4), zr(56, 82));
+      if (R() < 0.7) {
         const c = new THREE.Group();
         const body = new THREE.Mesh(G.box, MAT.walls[0]);
         body.scale.set(3, 7, 3);
@@ -945,40 +995,55 @@ function spawnField(k) {
         st.position.y = 7;
         st.rotation.y = Math.PI / 4;
         c.add(body, st);
-        c.position.set(L * (0.3 + R() * 0.4), GROUND_Y, zr(80, 90));
+        c.position.set(cx + xr(-30, 30), GROUND_Y, zr(80, 90));
         g.add(c);
       }
-      for (let i = 0; i < 6; i++) addTree(g, R, R() * L, zr(54, 92), 0.9 + R() * 0.5, R() < 0.3);
+      for (let i = 0; i < 3; i++) addHouse(g, R, xr(0, L), zr(60, 85));
+      for (let i = 0; i < 20; i++) addTree(g, R, xr(0, L), zr(54, 92), 0.9 + R() * 0.5, R() < 0.3);
       break;
     }
     case 'windmills': {
-      const n = 2 + Math.floor(R() * 2);
+      const n = 4 + Math.floor(R() * 3);
       for (let i = 0; i < n; i++) addWindmill(g, R, (i + 0.3 + R() * 0.4) * (L / n), zr(60, 85), spinners);
-      addHouse(g, R, R() * L, zr(55, 65));
-      for (let i = 0; i < 4; i++) addTree(g, R, R() * L, zr(55, 90), 1);
+      addHouse(g, R, cx, zr(55, 65));
+      for (let i = 0; i < 12; i++) addTree(g, R, xr(0, L), zr(55, 90), 1);
       break;
     }
     case 'forest': {
-      for (let i = 0; i < 34; i++) addTree(g, R, R() * L, zr(52, 92), 1 + R() * 0.7, R() < 0.25);
+      for (let i = 0; i < 70; i++) addTree(g, R, cx + xr(-90, 90), zr(52, 92), 1 + R() * 0.7, R() < 0.25);
+      for (let i = 0; i < 14; i++) addTree(g, R, xr(0, L), zr(55, 92), 1 + R() * 0.5);
       break;
     }
     case 'lake': {
       const w = new THREE.Mesh(G.plane, MAT.water);
       w.rotation.x = -Math.PI / 2;
-      w.scale.set(L + 4, 34, 1);
-      w.position.set(L / 2, GROUND_Y + 0.03, -70);
+      w.scale.set(200, 34, 1);
+      w.position.set(cx, GROUND_Y + 0.03, -70);
       g.add(w);
-      for (let i = 0; i < 12; i++) addTree(g, R, R() * L, zr(88, 98), 1 + R() * 0.5, R() < 0.4);
-      addHouse(g, R, R() * L, -92, { w: 4, d: 3, h: 2.6 });
-      for (let i = 0; i < 4; i++) addTree(g, R, R() * L, zr(48, 52), 0.8);
+      for (let i = 0; i < 24; i++) addTree(g, R, cx + xr(-110, 110), zr(88, 98), 1 + R() * 0.5, R() < 0.4);
+      addHouse(g, R, cx + xr(-60, 60), -92, { w: 4, d: 3, h: 2.6 });
+      for (let i = 0; i < 8; i++) addTree(g, R, cx + xr(-100, 100), zr(48, 52), 0.8);
+      for (let i = 0; i < 10; i++) addTree(g, R, xr(0, L), zr(55, 90), 1);
       break;
     }
     case 'hills':
     default: {
-      for (let i = 0; i < 8; i++) addTree(g, R, R() * L, zr(55, 95), 0.9 + R() * 0.6, R() < 0.6);
-      if (R() < 0.7) addHouse(g, R, R() * L, zr(70, 85), { roof: MAT.roofs[0] });
+      for (let i = 0; i < 28; i++) addTree(g, R, xr(0, L), zr(55, 95), 0.9 + R() * 0.6, R() < 0.6);
+      for (let i = 0; i < 3; i++) if (R() < 0.7) addHouse(g, R, xr(0, L), zr(70, 85), { roof: MAT.roofs[0] });
     }
   }
+
+  // The open land between fields comes closer to the line: lone trees and
+  // hedgerows in meadows, a farmhouse by the paddies, bales on the stubble.
+  const c0 = fEnd + GAP + 4, c1 = L - 4;
+  const ck = COUNTRY[t16];
+  for (let x = c0 + xr(0, 30); x < c1; x += xr(25, 70)) {
+    if (R() < 0.45) addTree(g, R, x, zr(10, 34), 0.9 + R() * 0.5, R() < 0.2);
+    else if (R() < 0.5) for (let i = 0; i < 4 + R() * 5; i++) addTree(g, R, x + i * xr(2.5, 4), zr(28, 40), 0.8 + R() * 0.3);
+  }
+  if (ck === 1 && R() < 0.8) addHouse(g, R, xr(c0 + 10, c1 - 10), zr(26, 40), { w: 4.5, d: 3.5, h: 2.6 });
+  if (ck === 2) for (let i = 0; i < 8; i++) bale(xr(c0, c1), zr(8, 30));
+
   outside.add(g);
   return { g, spinners };
 }
@@ -1291,7 +1356,8 @@ if (state.dev) {
 }
 
 // ---------- loop ----------
-let travel = 0, time = 0, last = performance.now(), nextJoint = 25, jolt = 0;
+// ?at=<metres> starts further down the line, for checking a particular stretch
+let travel = parseFloat(params.get('at')) || 0, time = 0, last = performance.now(), nextJoint = travel + 25, jolt = 0;
 let frames = 0, frameAcc = 0, qualityChecks = 0;
 const hoverColor = new THREE.Color('#ffd9a0');
 
