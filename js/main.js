@@ -28,6 +28,7 @@ const COUNTRY = [1, 0, 2, 1, 0, 1, 2, 0, 1, 2, 0, 1, 0, 2, 1, 0]; // 0 meadow, 1
 const WATER = PLACES.map((p) => p.water);
 const GRADE = PLACES.map((p) => new THREE.Color(1, 1, 1).lerp(new THREE.Color(p.grade[0]), p.grade[1]));
 const MIST = PLACES.map((p) => p.mist);
+const RISE = PLACES.map((p) => p.rise), ROUGH = PLACES.map((p) => p.rough);
 const linear = (c) => new THREE.Color(c);
 const LAMP = { sp: 32, off: 12, z: -5.5 };
 const POLE = { sp: 48, off: 30, z: -1.9 };
@@ -97,12 +98,13 @@ const U = {
   uFarCol: { value: PLACES.map((p) => linear(p.far)) }, uHillCol: { value: PLACES.map((p) => linear(p.hill)) },
   uWaterCol: { value: PLACES.map((p) => linear(p.waterCol)) }, uRiseK: { value: PLACES.map((p) => p.rise) },
   uPeakK: { value: PLACES.map((p) => p.peaks) }, uShore: { value: PLACES.map((p) => p.shore) },
+  uRough: { value: PLACES.map((p) => p.rough) }, uRidge: { value: PLACES.map((p) => p.ridge) }, uPat: { value: PLACES.map((p) => p.pat) },
 };
 
 const GLSL_COMMON = /* glsl */`
 uniform float uTravel, uTime, uNight, uFogNear, uFogFar, uLampSp, uLampOff, uLampZ, uL, uGap, uGroundY, uWind, uRain;
 uniform vec3 uSunCol, uAmb, uSunDir, uFogCol, uLampCol;
-uniform float uFEnd[16], uCountry[16], uCloudShade, uWater[16], uRiseK[16], uPeakK[16], uShore[16];
+uniform float uFEnd[16], uCountry[16], uCloudShade, uWater[16], uRiseK[16], uPeakK[16], uShore[16], uRough[16], uRidge[16], uPat[16];
 uniform vec3 uFarCol[16], uHillCol[16], uWaterCol[16];
 // a per-place value at this point of the line, eased across the joins
 float segF(float a[16], float tx, float wid){
@@ -139,7 +141,11 @@ float shoreZ(float tx){
 float riseAt(float tx, float z){
   float lake = waterW(tx, 2., 60.), sea = waterW(tx, 1., 60.);
   float R = max(2., 7. + 5.*sin(tx*.0047) + 3.*sin(tx*.013 + 1.3));
-  return R * segF(uRiseK, tx, 80.) * smoothstep(-44., -154., z) * (1. - max(sea, lake));
+  // rolling hills and hollows, from a few crossed waves (rolls() in JS)
+  float rolls = sin(tx*.021 + z*.013)*.5 + sin(tx*.047 - z*.031 + 1.7)*.3 + sin(tx*.009 + z*.027 + 4.1)*.6 + sin(tx*.083 + z*.06 + 2.3)*.15;
+  float land = R * segF(uRiseK, tx, 80.) * smoothstep(-44., -154., z)
+             + segF(uRough, tx, 80.) * smoothstep(-44., -95., z) * (rolls + 1.6) * 3.;
+  return land * (1. - max(sea, lake));
 }
 vec3 lampLight(float tx, float z, float y){
   float lx = floor((tx - uLampOff)/uLampSp + .5)*uLampSp + uLampOff;
@@ -220,6 +226,7 @@ function hillLayer(z, base, amp, freq, shade, haze, bumpy, seed, peak = 0, seaKe
             h += pk * range * (m*m*(3. - 2.*m)) + pk*.08*range*vnoise(vec2(tx*.03, 2.));
           }
           // over the sea the land falls away, leaving only distant headlands
+          h = uBase + (h - uBase) * segF(uRidge, tx, 160.);
           float sw = waterW(tx, 1., 160.);
           h = mix(h, uBase - 60. + (h - uBase)*uSeaKeep, sw);
           h = mix(h, uBase - 60., waterW(tx, 2., 160.)*(1. - uOverLake));
@@ -300,6 +307,19 @@ const ground = new THREE.Mesh(
         col = mix(col, cc, bed*country);
         // beyond the flowers the ground takes the place's own colour
         vec3 farC = segV3(uFarCol, tx, 60.) * (.82 + .3*n1) * (.92 + .16*n2);
+        float pat = uPat[t];
+        if (pat > .5 && pat < 1.5) {
+          // salt crust: pale polygons with darker seams, and shallow pools of sky
+          vec2 q = vec2(tx*.09, z*.22) + .4*vec2(vnoise(vec2(tx*.03, z*.05)), vnoise(vec2(z*.04, tx*.02)));
+          vec2 f = abs(fract(q) - .5);
+          float seam = smoothstep(.44, .5, max(f.x, f.y));
+          farC = mix(vec3(.93,.95,.9)*(.92 + .1*n2), vec3(.7,.78,.72), seam*.7);
+          float pool = smoothstep(.62, .68, fbm(vec2(tx*.012, z*.03)));
+          farC = mix(farC, uFogCol*1.05, pool*.8);
+        } else if (pat > 1.5) {
+          // wind ripples across the dunes
+          farC *= .9 + .14*sin(tx*.9 + z*1.7 + 3.*vnoise(vec2(tx*.05, z*.1)));
+        }
         col = mix(col, farC, smoothstep(-40., -50., z));
         // sea or a wide lake beyond the shore
         float sea = waterW(tx, 1., 40.), lake = waterW(tx, 2., 40.);
@@ -328,7 +348,10 @@ const ground = new THREE.Mesh(
           col = mix(col, wcol, wet);
         }
         col *= 1. - uRain*.25;
-        vec3 c = col * (uAmb + uSunCol*(max(uSunDir.y, 0.)*.9 + .1));
+        vec3 nrm = normalize(cross(dFdx(vW), dFdy(vW)));
+        if (nrm.y < 0.) nrm = -nrm;
+        float slope = mix(max(uSunDir.y, 0.)*.9 + .1, max(dot(nrm, uSunDir), 0.)*1.05 + .08, smoothstep(-42., -60., z));
+        vec3 c = col * (uAmb*(.75 + .25*nrm.y) + uSunCol*slope);
         if (wet > 0.) c = mix(c, wcol * (uAmb*.6 + uSunCol*.4) + wcol*.15, wet);
         c += col * lampLight(tx, z, uGroundY);
         gl_FragColor = vec4(fogIt(c, vW), 1.);
@@ -1392,7 +1415,9 @@ function riseAt(tx, z) {
   tx = ((tx % WRAP) + WRAP) % WRAP;
   const lake = waterAt(tx, 2, 40), sea = waterAt(tx, 1, 60);
   const R = Math.max(2, 7 + 5 * Math.sin(tx * 0.0047) + 3 * Math.sin(tx * 0.013 + 1.3));
-  return R * segAt(PLACES.map((p) => p.rise), tx, 80) * sstep(-44, -154, z) * (1 - Math.max(sea, lake));
+  const rolls = Math.sin(tx * 0.021 + z * 0.013) * 0.5 + Math.sin(tx * 0.047 - z * 0.031 + 1.7) * 0.3 + Math.sin(tx * 0.009 + z * 0.027 + 4.1) * 0.6 + Math.sin(tx * 0.083 + z * 0.06 + 2.3) * 0.15;
+  const land = R * segAt(RISE, tx, 80) * sstep(-44, -154, z) + segAt(ROUGH, tx, 80) * sstep(-44, -95, z) * (rolls + 1.6) * 3;
+  return land * (1 - Math.max(sea, lake));
 }
 
 // ---------- painterly post pass ----------
