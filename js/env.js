@@ -27,8 +27,8 @@ const KEYS = [
   { e: -12, top: '#0d1a40', hor: '#2a3a6c', sun: '#9ab0ff', sunI: 0.34, amb: '#33447a', ambI: 0.48, fog: '#1e2a52' },
   { e: -4,  top: '#29407c', hor: '#d7909c', sun: '#ff9a7a', sunI: 0.5,  amb: '#6a6aa0', ambI: 0.62, fog: '#8f7c9c' },
   { e: 3,   top: '#5a86c8', hor: '#ffb888', sun: '#ffaa66', sunI: 1.5,  amb: '#a1aed6', ambI: 0.8,  fog: '#e6b49c' },
-  { e: 14,  top: '#3f86d8', hor: '#a9cbe8', sun: '#ffe2bc', sunI: 2.1,  amb: '#bcd2ec', ambI: 0.95, fog: '#c6d8e6' },
-  { e: 72,  top: '#2f7ad6', hor: '#9cc4e8', sun: '#fff5e6', sunI: 2.5,  amb: '#cde0f4', ambI: 1.05, fog: '#c4daec' },
+  { e: 14,  top: '#2f7ee0', hor: '#8ec2f0', sun: '#ffe2bc', sunI: 2.1,  amb: '#bcd2ec', ambI: 0.95, fog: '#c6d8e6' },
+  { e: 72,  top: '#226fd8', hor: '#86bcf0', sun: '#fff5e6', sunI: 2.5,  amb: '#cde0f4', ambI: 1.05, fog: '#c4daec' },
 ];
 
 const _a = new THREE.Color(), _b = new THREE.Color();
@@ -75,8 +75,9 @@ export function computeEnv(hour, weather) {
     env.top.multiplyScalar(0.72); env.hor.multiplyScalar(0.78); env.fog.multiplyScalar(0.8);
     env.ambI *= 0.85;
   }
-  env.fogNear = weather === 'fog' ? 6 : weather === 'rain' ? 18 : 40;
-  env.fogFar = weather === 'fog' ? 75 : weather === 'rain' ? 160 : 420;
+  // clear air carries colour a long way; only rain and fog really veil it
+  env.fogNear = weather === 'fog' ? 6 : weather === 'rain' ? 18 : weather === 'overcast' ? 60 : 90;
+  env.fogFar = weather === 'fog' ? 75 : weather === 'rain' ? 160 : weather === 'overcast' ? 500 : 900;
 
   // Sun drifts from the right of the window in the morning to the left at dusk.
   const dayT = THREE.MathUtils.clamp((hour - SUNRISE) / (SUNSET - SUNRISE), 0, 1);

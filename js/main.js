@@ -245,7 +245,7 @@ function hillLayer(z, base, amp, freq, shade, haze, bumpy, seed, peak = 0, seaKe
             c = mix(c, vec3(.86,.9,1.)*(uAmb*.8 + uSunCol*.45), snow*.8);
           }
           c += uLampCol * uNight * .04 * step(.985, hash12(floor(vec2(tx*.4, vW.y*.8)))) * step(vW.y, h - 1.);
-          c = mix(c, uFogCol, clamp(uHaze + (uFogNear < 10. ? .5 : 0.), 0., 1.));
+          c = mix(c, uFogCol, clamp(uHaze*.55 + (uFogNear < 10. ? .5 : 0.), 0., 1.));
           gl_FragColor = vec4(c, 1.);
         }`,
     })
@@ -350,7 +350,7 @@ const ground = new THREE.Mesh(
         col *= 1. - uRain*.25;
         vec3 nrm = normalize(cross(dFdx(vW), dFdy(vW)));
         if (nrm.y < 0.) nrm = -nrm;
-        float slope = mix(max(uSunDir.y, 0.)*.9 + .1, max(dot(nrm, uSunDir), 0.)*1.05 + .08, smoothstep(-42., -60., z));
+        float slope = mix(max(uSunDir.y, 0.)*.9 + .1, max(dot(nrm, uSunDir), 0.)*.72 + .05, smoothstep(-42., -60., z)); // gentler on the far land so its colour isn't bleached
         vec3 c = col * (uAmb*(.75 + .25*nrm.y) + uSunCol*slope);
         if (wet > 0.) c = mix(c, wcol * (uAmb*.6 + uSunCol*.4) + wcol*.15, wet);
         c += col * lampLight(tx, z, uGroundY);
@@ -1459,6 +1459,8 @@ const post = new THREE.ShaderMaterial({
       if (v3 < best) { best = v3; col = m3; }
       col = col / max(1. - col, .001);
       col = aces(col * uExposure);
+      float luma = dot(col, vec3(.2126, .7152, .0722));
+      col = clamp(mix(vec3(luma), col, 1.22), 0., 1.);
       col = toSRGB(col);
       // warm the shadows, cool the night a touch
       float l = dot(col, vec3(.299, .587, .114));
@@ -1787,8 +1789,8 @@ function applyGrade() {
   sky.material.uniforms.uTop.value.copy(env.top).lerp(_grade.copy(env.top).multiply(_g2), 0.6);
   U.uAmb.value.copy(env.amb).multiplyScalar(env.ambI * 0.75).multiply(_grade.set(1, 1, 1).lerp(_g2, 0.5));
   const mist = segAt(MIST, travel, 60);
-  U.uFogNear.value = env.fogNear * (1 - mist * 0.6);
-  U.uFogFar.value = env.fogFar * (1 - mist * 0.55);
+  U.uFogNear.value = env.fogNear * (1 - mist * 0.5);
+  U.uFogFar.value = env.fogFar * (1 - mist * 0.5);
   scene.fog.near = U.uFogNear.value;
   scene.fog.far = U.uFogFar.value;
 }

@@ -138,12 +138,16 @@ const B = {
     kit.addLighthouse(g, hx + 10, -84, true);
   },
   canyon(kit, g, R, M) {
-    const { L } = kit;
-    // monumental sandstone mesas and buttes
-    for (let i = 0; i < 18; i++) {
-      const x = R() * L, z = -(130 + R() * 200), w = 25 + R() * 50, h = 25 + R() * 45;
-      cube(kit, g, x, z, w, h, w * (0.5 + R() * 0.6), M.sandstone[i % 2]).rotation.y = (R() - 0.5) * 0.6;
-      if (R() < 0.5) cube(kit, g, x + w * 0.4, z + 5, w * 0.3, h * 0.6, w * 0.3, M.sandstone[(i + 1) % 2]);
+    const { L, THREE, GROUND_Y } = kit;
+    // monumental sandstone mesas and buttes far off, irregular and slightly tapered
+    for (let i = 0; i < 16; i++) {
+      const x = R() * L, z = -(190 + R() * 160), r = 14 + R() * 30, h = 22 + R() * 40;
+      const m = new THREE.Mesh(new THREE.CylinderGeometry(r * (0.7 + R() * 0.2), r, h, 6 + Math.floor(R() * 3), 2), M.sandstone[i % 2]);
+      m.userData.own = true;
+      m.scale.z = 0.4 + R() * 0.4;
+      m.rotation.y = R() * 3;
+      m.position.set(x, GROUND_Y + h / 2 - 1, z);
+      g.add(m);
     }
   },
   blueHills(kit, g, R, M) {
