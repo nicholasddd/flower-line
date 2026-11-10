@@ -1074,6 +1074,94 @@ const bouquet = (() => {
   interior.add(ticket);
 }
 
+// ---------- a folded map of the partner florists ----------
+function mapCanvas() {
+  const c = paperCanvas(512, 97, '#efe4c8');
+  const ctx = c.getContext('2d');
+  const R = rng(97);
+  // fields and parks
+  for (let i = 0; i < 14; i++) {
+    ctx.fillStyle = i % 3 ? 'rgba(120,150,80,.5)' : 'rgba(200,160,90,.45)';
+    ctx.beginPath();
+    ctx.ellipse(R() * 512, R() * 512, 30 + R() * 60, 20 + R() * 40, R() * 3, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  // a river
+  ctx.strokeStyle = 'rgb(80,130,185)';
+  ctx.lineWidth = 22;
+  ctx.lineCap = 'round';
+  ctx.beginPath();
+  ctx.moveTo(120, -10);
+  ctx.bezierCurveTo(60, 160, 260, 220, 190, 360);
+  ctx.bezierCurveTo(150, 440, 230, 500, 210, 530);
+  ctx.stroke();
+  // roads and the railway
+  ctx.strokeStyle = 'rgba(150,90,60,.85)';
+  ctx.lineWidth = 5;
+  for (let i = 0; i < 9; i++) {
+    ctx.beginPath();
+    ctx.moveTo(R() * 512, 0);
+    ctx.bezierCurveTo(R() * 512, 170, R() * 512, 340, R() * 512, 512);
+    ctx.stroke();
+  }
+  ctx.strokeStyle = 'rgba(60,45,35,.7)';
+  ctx.lineWidth = 2;
+  ctx.setLineDash([10, 6]);
+  ctx.beginPath();
+  ctx.moveTo(0, 300);
+  ctx.bezierCurveTo(160, 260, 330, 360, 512, 290);
+  ctx.stroke();
+  ctx.setLineDash([]);
+  // pins for the partner florists
+  for (const [x, y] of [[300, 140], [390, 250], [160, 300], [330, 420]]) {
+    ctx.fillStyle = '#8e2a2a';
+    ctx.beginPath();
+    ctx.arc(x, y - 20, 16, 0, Math.PI * 2);
+    ctx.moveTo(x - 13, y - 12); ctx.lineTo(x, y + 6); ctx.lineTo(x + 13, y - 12);
+    ctx.fill();
+    ctx.fillStyle = '#f3e8d2';
+    ctx.beginPath(); ctx.arc(x, y - 20, 6, 0, Math.PI * 2); ctx.fill();
+  }
+  // compass and title
+  ctx.strokeStyle = 'rgba(60,45,35,.6)';
+  ctx.lineWidth = 2;
+  ctx.beginPath(); ctx.moveTo(460, 40); ctx.lineTo(460, 100); ctx.moveTo(430, 70); ctx.lineTo(490, 70); ctx.stroke();
+  ctx.fillStyle = 'rgba(60,45,35,.75)';
+  ctx.font = '22px "Cormorant Garamond", serif';
+  ctx.fillText('N', 453, 34);
+  ctx.font = '46px "Pinyon Script", cursive';
+  ctx.fillText('Our florists', 24, 486);
+  return c;
+}
+
+const floristMap = (() => {
+  const MW = 0.26, MD = 0.18;
+  const g = new THREE.Group();
+  const t = tex(mapCanvas());
+  const back = new THREE.MeshStandardMaterial({ color: '#e6d8b8', roughness: 1 });
+  // two halves meeting at a raised crease, each showing its half of the map
+  for (const side of [-1, 1]) {
+    const tt = t.clone();
+    tt.needsUpdate = true;
+    tt.repeat.set(0.5, 1);
+    tt.offset.set(side < 0 ? 0 : 0.5, 0);
+    const half = shadowy(new THREE.Mesh(new THREE.BoxGeometry(MW / 2, 0.0012, MD),
+      [back, back, new THREE.MeshStandardMaterial({ map: tt, roughness: 1 }), back, back, back]), true, true);
+    const hinge = new THREE.Group();
+    half.position.x = side * MW / 4;
+    hinge.add(half);
+    hinge.rotation.z = -side * 0.07;
+    hinge.position.y = 0.0045;
+    g.add(hinge);
+  }
+  g.position.set(-0.37, TOP, -0.41);
+  g.rotation.y = 0.22;
+  g.userData = { kind: 'map', MW, home: { p: g.position.clone(), q: g.quaternion.clone() } };
+  interior.add(g);
+  interactive.push(g);
+  return g;
+})();
+
 // intercom above the window
 const intercom = (() => {
   const g = new THREE.Group();
@@ -1677,6 +1765,25 @@ async function closeBouquet() {
   focus = null; busy = false;
 }
 
+async function openMap() {
+  busy = true; focus = floristMap; hinted = true;
+  const wpx = Math.min(innerWidth * 0.36, 520);
+  const dist = (floristMap.userData.MW * innerHeight) / (wpx * 2 * tanHalf());
+  await fly(floristMap, worldPose(floristMap), focusPose(dist, new THREE.Vector3(0, -0.01, 0)), 0.9);
+  UI.veil(true);
+  await UI.showMap();
+  floristMap.visible = false;
+  busy = false;
+}
+async function closeMap() {
+  busy = true;
+  floristMap.visible = true;
+  UI.veil(false);
+  await UI.hideMap();
+  await fly(floristMap, worldPose(floristMap), floristMap.userData.home, 0.8);
+  focus = null; busy = false;
+}
+
 function screenOf(o) {
   const v = o.getWorldPosition(new THREE.Vector3()).project(camera);
   return { x: (v.x * 0.5 + 0.5) * innerWidth, y: (-v.y * 0.5 + 0.5) * innerHeight };
@@ -1696,11 +1803,13 @@ addEventListener('click', (e) => {
   if (focus === journal) return closeJournal();
   if (focus === envelope) return closeEnvelope();
   if (focus === bouquet) return closeBouquet();
+  if (focus === floristMap) return closeMap();
   if (!hovered) return;
   const kind = hovered.userData.kind;
   if (kind === 'journal') openJournal();
   else if (kind === 'envelope') openEnvelope();
   else if (kind === 'bouquet') openBouquet();
+  else if (kind === 'map') openMap();
   else if (kind === 'intercom') pressIntercom();
 });
 addEventListener('keydown', (e) => {
@@ -1708,6 +1817,7 @@ addEventListener('keydown', (e) => {
   if (focus === journal) closeJournal();
   else if (focus === envelope) closeEnvelope();
   else if (focus === bouquet) closeBouquet();
+  else if (focus === floristMap) closeMap();
   else UI.closeChat();
 });
 UI.onBackdrop(() => {
@@ -1715,6 +1825,7 @@ UI.onBackdrop(() => {
   if (focus === journal) closeJournal();
   else if (focus === envelope) closeEnvelope();
   else if (focus === bouquet) closeBouquet();
+  else if (focus === floristMap) closeMap();
 });
 
 // ---------- dev panel ----------
@@ -1849,5 +1960,5 @@ function frame(now) {
 
 UI.init({ pages, atlas: atlasCanvas });
 // tick(n): run n frames by hand, for testing while the page is in the background
-Object.assign(window.__three, { openJournal, closeJournal, openEnvelope, closeEnvelope, pressIntercom, tick: (n = 1) => { for (let i = 0; i < n; i++) frame(last + 16); }, openBouquet, closeBouquet });
+Object.assign(window.__three, { openJournal, closeJournal, openEnvelope, closeEnvelope, pressIntercom, tick: (n = 1) => { for (let i = 0; i < n; i++) frame(last + 16); }, openBouquet, closeBouquet, openMap, closeMap });
 requestAnimationFrame((t) => { last = t; frame(t); UI.reveal(); });

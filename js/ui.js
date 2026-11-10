@@ -2,6 +2,7 @@
 // the build-your-own bouquet, the intercom chat, sound and a small dev panel.
 import { STEMS, WRAPS, CURRENCY, MAX_PER_STEM } from './inventory.js';
 import { drawBouquet, stemThumb } from './paint.js';
+import { PARTNERS, ZOOM } from './partners.js';
 
 const $ = (s) => document.querySelector(s);
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -21,6 +22,7 @@ const ENDPAPER = { left: '0%', top: '0%', width: '50%', height: '100%' };
 export function init({ pages, atlas }) {
   pageURLs = pages.map((c) => c.toDataURL('image/jpeg', 0.88));
   setupBuilder(atlas);
+  setupMap();
   $('#veil').addEventListener('click', () => backdropFn());
   $('#book').addEventListener('click', (e) => {
     const pg = e.target.closest('.pg');
@@ -260,6 +262,44 @@ export async function showBuilder() {
 
 export async function hideBuilder() {
   $('#builder').classList.remove('on');
+  await wait(400);
+}
+
+// ---------- partner florists map ----------
+// A Google Maps embed beside the list of partners; picking one moves the map.
+// The map only loads the first time the card is opened.
+let partnerIndex = 0;
+const mapSrc = (p) => `https://maps.google.com/maps?q=${p.lat},${p.lng}&z=${ZOOM}&output=embed`;
+
+function setupMap() {
+  const list = $('#mapcard .partners');
+  PARTNERS.forEach((p, i) => {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'partner' + (i === 0 ? ' picked' : '');
+    b.innerHTML = '<b></b><span class="area"></span><span class="meta"></span>';
+    b.querySelector('b').textContent = p.name;
+    b.querySelector('.area').textContent = p.area;
+    b.querySelector('.meta').textContent = [p.address, p.hours, p.contact].filter(Boolean).join(' · ');
+    b.addEventListener('click', () => {
+      partnerIndex = i;
+      list.querySelectorAll('.partner').forEach((x) => x.classList.toggle('picked', x === b));
+      $('#mapcard iframe').src = mapSrc(p);
+    });
+    list.append(b);
+  });
+  $('#mapcard').addEventListener('click', (e) => { if (e.target.id === 'mapcard') backdropFn(); });
+}
+
+export async function showMap() {
+  const f = $('#mapcard iframe');
+  if (!f.src && PARTNERS.length) f.src = mapSrc(PARTNERS[partnerIndex]);
+  $('#mapcard').classList.add('on');
+  await wait(450);
+}
+
+export async function hideMap() {
+  $('#mapcard').classList.remove('on');
   await wait(400);
 }
 
