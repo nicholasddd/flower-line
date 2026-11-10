@@ -127,7 +127,9 @@ const sky = new THREE.Mesh(
       void main(){
         vec3 d = normalize(vW - cameraPosition);
         float e = d.y;
-        vec3 col = mix(uHor, uTop, pow(clamp(e*1.8 + .02, 0., 1.), .65));
+        // at dawn and dusk the warm horizon colour climbs high up the sky
+        float golden = smoothstep(.35, .0, uSunDir.y) * (1. - uNight);
+        vec3 col = mix(uHor, uTop, pow(clamp(e*1.6 + .02, 0., 1.), mix(.65, 1.7, golden)));
         float sd = max(dot(d, uSunDir), 0.);
         float sunVis = (1. - uNight) * (1. - uCloud*.85);
         col += uSunCol * (smoothstep(.9992, .9996, sd)*6. + pow(sd, 10.)*.25 + pow(sd, 3.)*.08) * sunVis;
@@ -139,16 +141,46 @@ const sky = new THREE.Mesh(
         float h = hash12(id);
         float star = step(.986, h) * smoothstep(.35, 0., length(fract(sp) - .5)) * (.6 + .4*sin(uTime*2. + h*80.));
         col += star * uNight * (1. - uCloud) * smoothstep(.02, .15, e) * 1.6;
-        // painterly clouds on a high plane
+        // a glowing band along the horizon around sunrise and sunset
+        float az = atan(d.x, -d.z), sAz = atan(uSunDir.x, -uSunDir.z);
+        float towardSun = .5 + .5*cos(az - sAz);
+        col += uSunCol * golden * pow(1. - clamp(e, 0., 1.), 5.) * (.25 + .7*towardSun*towardSun) * (1. - uCloud*.5);
+        // golden hour washes the lower sky in peach and rose
+        col = mix(col, col * vec3(1.25, .92, .82) + vec3(.12, .03, .05), golden * smoothstep(.45, .0, e) * (1. - uRain));
+
+        // high wisps on a far plane
         vec2 cuv = d.xz / (d.y + .06);
         cuv.x += uTime*.006 + uTravel*.00025;
-        float n = fbm(cuv*.9) * .7 + fbm(cuv*3.1)*.3;
-        float cov = smoothstep(1. - uCloud - .12, 1. - uCloud + .22, n) * smoothstep(-.01, .06, e);
-        float lit = clamp(dot(normalize(vec3(cuv.x, 1., cuv.y)), uSunDir)*.5 + .5, 0., 1.);
-        vec3 cloudCol = mix(uHor*.85, mix(vec3(1.), uSunCol*.6 + .4, .5), lit*(1.-uNight)) ;
-        cloudCol = mix(cloudCol, uHor*.55 + vec3(.04,.05,.09), uNight*.8);
-        cloudCol *= 1. - uRain*.35;
-        col = mix(col, cloudCol, cov*.95);
+        float wisp = smoothstep(.55, .8, fbm(cuv*vec2(.6, 2.4) + 7.)) * smoothstep(.04, .2, e) * (1. - uCloud*.5);
+        col = mix(col, mix(vec3(1.), uSunCol*.55 + .35, golden) * (1. - uNight*.8), wisp*.35);
+
+        // Towering cumulus with flat bases and billowing tops, lit from the
+        // sun's side with dark undersides. Coverage, height and darkness
+        // follow the weather.
+        float drift = uTime*.004 + uTravel*.00018;
+        vec2 cp = vec2(az*5. + drift*6., e*13.);
+        float cover = .3 + uCloud*.75 + golden*.25; // more cloud to catch the light at dawn and dusk
+        // bases sit just above the far hills; tops tower into the window
+        float base = .1 + .03*vnoise(vec2(az*3. + drift, 1.)) - uRain*.03;
+        float top = base + (.08 + .26*fbm(vec2(az*2.2 + drift*2., 3.))) * cover;
+        vec2 warp = vec2(fbm(cp*.5 + 4.), fbm(cp*.5 + 9.)) * 1.3;
+        float body = fbm(cp*.9 + warp)*.7 + fbm(cp*2.6 + warp)*.3;
+        float dens = body + (top - e) * 2.6 - (1. - cover) * .55;
+        float cl = smoothstep(.5, .62, dens) * smoothstep(base - .004, base + .012, e);
+        // light: brighter on the sun's side and towards the tops, a bright rim
+        vec2 toSun = vec2(sign(sin(sAz - az))*.35, .25);
+        float densS = fbm((cp + toSun)*.9 + warp)*.7 + fbm((cp + toSun)*2.6 + warp)*.3 + (top - (e + .019)) * 2.6 - (1. - cover)*.55;
+        float rim = clamp((dens - densS) * 4., 0., 1.);
+        float height = smoothstep(base, top + .02, e);
+        vec3 litCol = mix(vec3(1., .99, .97), normalize(uSunCol + .001) * 1.45, .3 + .65*golden);
+        vec3 shadeCol = mix(uTop, uHor, .4) * vec3(.62, .64, .78) + vec3(.05, .03, .08) * golden;
+        shadeCol = mix(shadeCol, vec3(.36, .38, .44), uRain*.7 + max(uCloud - .7, 0.));
+        float light = clamp(.1 + .65*height + .8*rim*(1. - uNight) + .3*towardSun*(1. - uNight), 0., 1.4);
+        litCol = mix(litCol, vec3(.62, .64, .68), uRain*.7); // storm clouds stay grey even where lit
+        vec3 cloudCol = mix(shadeCol, litCol * (.8 + .4*(1. - uNight)), smoothstep(.2, 1.1, light));
+        cloudCol = mix(cloudCol, vec3(.12, .14, .22) + uAmb*.15, uNight*.8);
+        cloudCol *= 1. - uRain*.4;
+        col = mix(col, cloudCol, cl);
         col = mix(col, uFogCol, smoothstep(.12, -.02, e) * (uFogNear < 10. ? .9 : .35));
         gl_FragColor = vec4(col, 1.);
       }`,

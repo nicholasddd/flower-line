@@ -23,12 +23,12 @@ export function sunElevation(h) {
 }
 
 const KEYS = [
-  { e: -55, top: '#060b1e', hor: '#152045', sun: '#8ea6ff', sunI: 0.32, amb: '#2b3a6c', ambI: 0.42, fog: '#141c38' },
-  { e: -12, top: '#0d1a40', hor: '#2a3a6c', sun: '#9ab0ff', sunI: 0.34, amb: '#33447a', ambI: 0.48, fog: '#1e2a52' },
-  { e: -4,  top: '#29407c', hor: '#d7909c', sun: '#ff9a7a', sunI: 0.5,  amb: '#6a6aa0', ambI: 0.62, fog: '#8f7c9c' },
-  { e: 3,   top: '#5a86c8', hor: '#ffb888', sun: '#ffaa66', sunI: 1.5,  amb: '#a1aed6', ambI: 0.8,  fog: '#e6b49c' },
-  { e: 14,  top: '#3f86d8', hor: '#a9cbe8', sun: '#ffe2bc', sunI: 2.1,  amb: '#bcd2ec', ambI: 0.95, fog: '#c6d8e6' },
-  { e: 72,  top: '#2f7ad6', hor: '#9cc4e8', sun: '#fff5e6', sunI: 2.5,  amb: '#cde0f4', ambI: 1.05, fog: '#c4daec' },
+  { e: -55, top: '#040a26', hor: '#14245a', sun: '#8ea6ff', sunI: 0.32, amb: '#2b3a6c', ambI: 0.42, fog: '#141c38' },
+  { e: -12, top: '#0a1a4c', hor: '#2a3c84', sun: '#9ab0ff', sunI: 0.34, amb: '#33447a', ambI: 0.48, fog: '#1e2a52' },
+  { e: -4,  top: '#283a8c', hor: '#f0809a', sun: '#ff9a7a', sunI: 0.5,  amb: '#6a6aa0', ambI: 0.62, fog: '#8f7c9c' },
+  { e: 3,   top: '#4a74c8', hor: '#ff9a5c', sun: '#ffaa66', sunI: 1.5,  amb: '#a1aed6', ambI: 0.8,  fog: '#e6b49c' },
+  { e: 14,  top: '#2a7ae0', hor: '#8cc4f0', sun: '#ffe2bc', sunI: 2.1,  amb: '#bcd2ec', ambI: 0.95, fog: '#c6d8e6' },
+  { e: 72,  top: '#1e6ad8', hor: '#84bcf0', sun: '#fff5e6', sunI: 2.5,  amb: '#cde0f4', ambI: 1.05, fog: '#c4daec' },
 ];
 
 const _a = new THREE.Color(), _b = new THREE.Color();
@@ -37,7 +37,7 @@ function lerpColor(out, ha, hb, t) {
   return out.copy(_a).lerp(_b, t);
 }
 
-const CLOUD = { clear: 0.12, cloudy: 0.48, overcast: 0.86, rain: 0.94, fog: 0.62 };
+const CLOUD = { clear: 0.18, cloudy: 0.5, overcast: 0.82, rain: 0.94, fog: 0.62 };
 
 export function computeEnv(hour, weather) {
   const e = sunElevation(hour);
@@ -66,8 +66,8 @@ export function computeEnv(hour, weather) {
     c.lerp(new THREE.Color(l, l, l * 1.04), k);
   };
   const ck = Math.max(0, env.cloud - 0.3) / 0.7;
-  grey(env.top, ck * 0.75);
-  grey(env.hor, ck * 0.6);
+  grey(env.top, ck * 0.55);
+  grey(env.hor, ck * 0.45);
   grey(env.fog, ck * 0.55);
   env.sunI *= 1 - ck * 0.72;
   env.ambI *= 1 + ck * 0.15;
