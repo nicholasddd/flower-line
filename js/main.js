@@ -674,7 +674,7 @@ const journal = (() => {
   ribbon.rotation.y = 0.25;
   g.add(ribbon);
 
-  g.position.set(-0.33, TOP, -0.665);
+  g.position.set(-0.446, TOP, -0.539);
   g.rotation.y = -0.16;
   g.userData = { kind: 'journal', pivot, CW, CH, T, home: { p: g.position.clone(), q: g.quaternion.clone() } };
   interior.add(g);
@@ -727,7 +727,7 @@ const envelope = (() => {
   seal.position.set(0, 0.002, EH * 0.5);
   pivot.add(seal);
   g.add(body, letter, pivot);
-  g.position.set(0.11, TOP, -0.45);
+  g.position.set(0.17, TOP, -0.45);
   g.rotation.y = 0.28;
   g.userData = { kind: 'envelope', pivot, letter, EW, EH, ET, home: { p: g.position.clone(), q: g.quaternion.clone() } };
   interior.add(g);
@@ -929,7 +929,7 @@ const drink = (() => {
 
   for (const g of Object.values(V)) { g.visible = false; root.add(g); }
   root.userData.variants = V;
-  root.position.set(-0.4, TOP, -0.86);
+  root.position.set(-0.376, TOP, -0.883);
   interior.add(root);
   return root;
 })();
@@ -1044,9 +1044,9 @@ const bouquet = (() => {
     breath.setMatrixAt(i, new THREE.Matrix4().makeTranslation(-0.16 - R() * 0.07, Math.sin(a) * rr * 0.6 + 0.01, Math.cos(a) * rr));
   }
   B.add(breath);
-  B.scale.setScalar(1.25);
-  B.position.set(0.3, TOP + 0.036, -0.7);
-  B.rotation.set(0, 0.32, -TILT, 'YXZ');
+  B.scale.setScalar(1.15);
+  B.position.set(0.207, TOP + 0.034, -0.832);
+  B.rotation.set(0, 0.06, -TILT, 'YXZ');
   B.userData = { kind: 'bouquet', home: { p: B.position.clone(), q: B.quaternion.clone() } };
   interior.add(B);
   interactive.push(B);
@@ -1055,7 +1055,8 @@ const bouquet = (() => {
 })();
 
 {
-  // a return ticket, punched, by the journal
+  // a return ticket, punched, in the gap between the drink and the bouquet
+  // (the table layout is measured so no two things overlap)
   const ticketCanvas = (() => {
     const c = paperCanvas(256, 88, '#efe4c8');
     const x = c.getContext('2d');
@@ -1069,7 +1070,7 @@ const bouquet = (() => {
     return c;
   })();
   const ticket = shadowy(new THREE.Mesh(new THREE.BoxGeometry(0.075, 0.0008, 0.075), [null, null, new THREE.MeshStandardMaterial({ map: tex(ticketCanvas), roughness: 1 }), null, null, null].map((m) => m ?? new THREE.MeshStandardMaterial({ color: '#efe4c8' }))), false, true);
-  ticket.position.set(-0.14, TOP + 0.0004, -0.47);
+  ticket.position.set(-0.16, TOP + 0.0004, -0.74);
   ticket.rotation.y = -0.35;
   interior.add(ticket);
 }
@@ -1193,7 +1194,7 @@ const floristMap = (() => {
   hinge.add(cover);
   g.add(inside, hinge);
   g.scale.setScalar(S);
-  g.position.set(-0.4, TOP, -0.43);
+  g.position.set(-0.147, TOP, -0.462);
   g.rotation.y = 0.12;
   g.userData = { kind: 'map', MW: PW * S * 1.6, home: { p: g.position.clone(), q: g.quaternion.clone() } };
   interior.add(g);
@@ -1999,5 +2000,5 @@ function frame(now) {
 
 UI.init({ pages, atlas: atlasCanvas });
 // tick(n): run n frames by hand, for testing while the page is in the background
-Object.assign(window.__three, { openJournal, closeJournal, openEnvelope, closeEnvelope, pressIntercom, tick: (n = 1) => { for (let i = 0; i < n; i++) frame(last + 16); }, openBouquet, closeBouquet, openMap, closeMap });
+Object.assign(window.__three, { openJournal, closeJournal, openEnvelope, closeEnvelope, pressIntercom, tick: (n = 1) => { for (let i = 0; i < n; i++) frame(last + 16); }, openBouquet, closeBouquet, openMap, closeMap, props: { journal, envelope, bouquet, floristMap, drink } });
 requestAnimationFrame((t) => { last = t; frame(t); UI.reveal(); });
