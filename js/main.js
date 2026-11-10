@@ -674,7 +674,7 @@ const journal = (() => {
   ribbon.rotation.y = 0.25;
   g.add(ribbon);
 
-  g.position.set(-0.446, TOP, -0.539);
+  g.position.set(-0.401, TOP, -0.559);
   g.rotation.y = -0.16;
   g.userData = { kind: 'journal', pivot, CW, CH, T, home: { p: g.position.clone(), q: g.quaternion.clone() } };
   interior.add(g);
@@ -727,7 +727,7 @@ const envelope = (() => {
   seal.position.set(0, 0.002, EH * 0.5);
   pivot.add(seal);
   g.add(body, letter, pivot);
-  g.position.set(0.17, TOP, -0.45);
+  g.position.set(0.335, TOP, -0.48);
   g.rotation.y = 0.28;
   g.userData = { kind: 'envelope', pivot, letter, EW, EH, ET, home: { p: g.position.clone(), q: g.quaternion.clone() } };
   interior.add(g);
@@ -980,8 +980,8 @@ const bouquet = (() => {
   // leave the tip and lie flat along the table (TILT undoes the tilt).
   const TILT = 0.19;
   for (let i = 0; i < 6; i++) {
-    const st = shadowy(new THREE.Mesh(new THREE.CylinderGeometry(0.0028, 0.0028, 0.1, 6).rotateZ(Math.PI / 2), stemMat));
-    st.position.set(0.14 + 0.05 * Math.cos(TILT), 0.05 * Math.sin(TILT) + 0.003 + (i % 2) * 0.004, (i - 2.5) * 0.005);
+    const st = shadowy(new THREE.Mesh(new THREE.CylinderGeometry(0.0028, 0.0028, 0.08, 6).rotateZ(Math.PI / 2), stemMat));
+    st.position.set(0.14 + 0.04 * Math.cos(TILT), 0.04 * Math.sin(TILT) + 0.003 + (i % 2) * 0.004, (i - 2.5) * 0.005);
     st.rotation.set(0, (i - 2.5) * 0.04, TILT);
     B.add(st);
   }
@@ -1045,7 +1045,7 @@ const bouquet = (() => {
   }
   B.add(breath);
   B.scale.setScalar(1.15);
-  B.position.set(0.207, TOP + 0.034, -0.832);
+  B.position.set(0.232, TOP + 0.034, -0.832);
   B.rotation.set(0, 0.06, -TILT, 'YXZ');
   B.userData = { kind: 'bouquet', home: { p: B.position.clone(), q: B.quaternion.clone() } };
   interior.add(B);
@@ -1070,7 +1070,7 @@ const bouquet = (() => {
     return c;
   })();
   const ticket = shadowy(new THREE.Mesh(new THREE.BoxGeometry(0.075, 0.0008, 0.075), [null, null, new THREE.MeshStandardMaterial({ map: tex(ticketCanvas), roughness: 1 }), null, null, null].map((m) => m ?? new THREE.MeshStandardMaterial({ color: '#efe4c8' }))), false, true);
-  ticket.position.set(-0.16, TOP + 0.0004, -0.74);
+  ticket.position.set(-0.14, TOP + 0.0004, -0.75);
   ticket.rotation.y = -0.35;
   interior.add(ticket);
 }
@@ -1194,8 +1194,8 @@ const floristMap = (() => {
   hinge.add(cover);
   g.add(inside, hinge);
   g.scale.setScalar(S);
-  g.position.set(-0.147, TOP, -0.462);
-  g.rotation.y = 0.12;
+  g.position.set(0.014, TOP, -0.313);
+  g.rotation.y = 1.64; // turned sideways along the front of the table, cover towards you
   g.userData = { kind: 'map', MW: PW * S * 1.6, home: { p: g.position.clone(), q: g.quaternion.clone() } };
   interior.add(g);
   interactive.push(g);
