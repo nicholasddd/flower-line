@@ -1,5 +1,7 @@
 // The HTML layers over the painting: the journal spread, the omakase letter,
-// the intercom chat, sound and a small dev panel.
+// the build-your-own bouquet, the intercom chat, sound and a small dev panel.
+import { STEMS, WRAPS, CURRENCY, MAX_PER_STEM } from './inventory.js';
+import { drawBouquet, stemThumb } from './paint.js';
 
 const $ = (s) => document.querySelector(s);
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -16,8 +18,9 @@ const RIGHT = { left: pct((BOOK.CW + 0.002) / (2 * BOOK.CW)), top: pct((BOOK.CH 
 const LEFT = { ...RIGHT, left: pct((BOOK.CW - 0.002 - BOOK.W) / (2 * BOOK.CW)) };
 const ENDPAPER = { left: '0%', top: '0%', width: '50%', height: '100%' };
 
-export function init({ pages }) {
+export function init({ pages, atlas }) {
   pageURLs = pages.map((c) => c.toDataURL('image/jpeg', 0.88));
+  setupBuilder(atlas);
   $('#veil').addEventListener('click', () => backdropFn());
   $('#book').addEventListener('click', (e) => {
     const pg = e.target.closest('.pg');
@@ -148,6 +151,115 @@ export async function showLetter() {
 
 export async function hideLetter() {
   $('#letter').classList.remove('on');
+  await wait(400);
+}
+
+// ---------- build-your-own bouquet ----------
+// Every stem is chosen and priced one by one; the preview repaints as the
+// bouquet grows. The florist adds greenery and wrapping.
+const counts = {};
+let wrap = WRAPS[0], atlasCanvas = null;
+const money = (n) => `${CURRENCY}${n.toLocaleString('en-US')}`;
+
+function setupBuilder(atlas) {
+  atlasCanvas = atlas;
+  const list = $('#builder .stems');
+  for (const item of STEMS) {
+    counts[item.id] = 0;
+    const row = document.createElement('div');
+    row.className = 'stem' + (item.soldOut ? ' sold' : '');
+    row.dataset.id = item.id;
+    row.append(stemThumb(atlas, item));
+    const label = document.createElement('div');
+    label.innerHTML = `<b></b><small></small>`;
+    label.querySelector('b').textContent = item.name;
+    label.querySelector('small').textContent = item.soldOut ? 'sold out today' : item.note ?? '';
+    const price = document.createElement('span');
+    price.className = 'price';
+    price.textContent = `${money(item.price)} / stem`;
+    const qty = document.createElement('div');
+    qty.className = 'qty';
+    qty.innerHTML = `<button type="button" data-d="-1" aria-label="One fewer ${item.name}">−</button><output>0</output><button type="button" data-d="1" aria-label="One more ${item.name}">+</button>`;
+    if (item.soldOut) qty.querySelectorAll('button').forEach((b) => { b.disabled = true; });
+    row.append(label, price, qty);
+    list.append(row);
+  }
+  list.addEventListener('click', (e) => {
+    const b = e.target.closest('button[data-d]');
+    if (!b) return;
+    const id = b.closest('.stem').dataset.id;
+    counts[id] = Math.max(0, Math.min(MAX_PER_STEM, counts[id] + Number(b.dataset.d)));
+    refreshBuilder();
+  });
+  const wraps = $('#builder .wraps');
+  for (const w of WRAPS) {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'pill' + (w === wrap ? ' picked' : '');
+    b.innerHTML = `<i></i>`;
+    b.querySelector('i').style.background = w.paper;
+    b.append(w.name);
+    b.addEventListener('click', () => {
+      wrap = w;
+      wraps.querySelectorAll('.pill').forEach((p) => p.classList.toggle('picked', p === b));
+      refreshBuilder();
+    });
+    wraps.append(b);
+  }
+  $('#builder form').addEventListener('submit', (e) => {
+    e.preventDefault();
+    const stems = STEMS.filter((s) => counts[s.id]).map((s) => ({ id: s.id, name: s.name, qty: counts[s.id], price: s.price }));
+    const order = { stems, wrap: wrap.id, total: stems.reduce((t, s) => t + s.qty * s.price, 0), ...Object.fromEntries(new FormData(e.target)) };
+    console.info('bespoke bouquet (not sent anywhere yet):', order);
+    $('#builder').classList.add('sent');
+  });
+  $('#builder').addEventListener('click', (e) => { if (e.target.id === 'builder') backdropFn(); });
+  refreshBuilder();
+}
+
+function refreshBuilder() {
+  let stems = 0, total = 0;
+  const picked = [];
+  for (const item of STEMS) {
+    const n = counts[item.id];
+    stems += n;
+    total += n * item.price;
+    const row = $(`#builder .stem[data-id="${item.id}"]`);
+    row.querySelector('output').textContent = n;
+    row.classList.toggle('has', n > 0);
+    row.querySelector('[data-d="-1"]').disabled = n === 0;
+    if (n) picked.push({ item, n });
+  }
+  $('#builder .tally strong').textContent = stems ? `${stems} stem${stems > 1 ? 's' : ''} · ${money(total)}` : '0 stems';
+  $('#builder .send').disabled = stems === 0;
+  $('#builder .empty').style.display = stems ? 'none' : '';
+  paintPreview(picked);
+}
+
+// Spread the dome's blooms across the chosen stems in proportion to how many
+// of each, so the painting reads like the order.
+function paintPreview(picked) {
+  const c = $('#builder canvas'), ctx = c.getContext('2d');
+  ctx.clearRect(0, 0, c.width, c.height);
+  if (!picked.length) return;
+  const total = picked.reduce((t, p) => t + p.n, 0);
+  const flowers = [];
+  for (let i = 0; i < 13; i++) {
+    // pick by proportion, deterministically, so the picture doesn't jump about
+    let x = ((i * 7 + 3) % 13 + 0.5) / 13 * total;
+    for (const p of picked) { if ((x -= p.n) < 0) { flowers.push(p.item.art ? p.item.art : { colour: p.item.colour, art: null }); break; } }
+  }
+  drawBouquet(ctx, atlasCanvas, { flowers, paper: wrap.paper, ribbon: wrap.ribbon }, c.width / 2, c.height * 0.5, c.width * 0.95, 4242);
+}
+
+export async function showBuilder() {
+  $('#builder').classList.remove('sent');
+  $('#builder').classList.add('on');
+  await wait(450);
+}
+
+export async function hideBuilder() {
+  $('#builder').classList.remove('on');
   await wait(400);
 }
 

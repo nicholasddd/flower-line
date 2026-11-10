@@ -929,7 +929,8 @@ function updateSteam(dt) {
 // ---------- the bouquet: wrapped, ribboned, carried a long way ----------
 // Someone is bringing these to the one they love. Their seat is empty for the
 // moment; the flowers lie on the table with the letter tucked against them.
-{
+// Clicking them opens the build-your-own bouquet.
+const bouquet = (() => {
   const B = new THREE.Group();
   // kraft paper cone with a blush tissue lining, lying on its side
   const kraftMat = painted('#b8916a', { n: 700, spread: 14, len: 30, width: 6, seed: 70 }, { side: THREE.DoubleSide });
@@ -1014,8 +1015,14 @@ function updateSteam(dt) {
   B.scale.setScalar(1.25);
   B.position.set(0.3, TOP + 0.036, -0.7);
   B.rotation.set(0, 0.32, -TILT, 'YXZ');
+  B.userData = { kind: 'bouquet', home: { p: B.position.clone(), q: B.quaternion.clone() } };
   interior.add(B);
+  interactive.push(B);
 
+  return B;
+})();
+
+{
   // a return ticket, punched, by the journal
   const ticketCanvas = (() => {
     const c = paperCanvas(256, 88, '#efe4c8');
@@ -1618,6 +1625,26 @@ async function closeEnvelope() {
   focus = null; busy = false;
 }
 
+async function openBouquet() {
+  busy = true; focus = bouquet; hinted = true;
+  // lift the bouquet towards you as the order card opens
+  const to = focusPose(0.62, new THREE.Vector3(-0.12, -0.02, 0));
+  to.q.multiply(new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 0, 1), -0.5));
+  await fly(bouquet, worldPose(bouquet), to, 0.9);
+  UI.veil(true);
+  await UI.showBuilder();
+  bouquet.visible = false;
+  busy = false;
+}
+async function closeBouquet() {
+  busy = true;
+  bouquet.visible = true;
+  UI.veil(false);
+  await UI.hideBuilder();
+  await fly(bouquet, worldPose(bouquet), bouquet.userData.home, 0.8);
+  focus = null; busy = false;
+}
+
 function screenOf(o) {
   const v = o.getWorldPosition(new THREE.Vector3()).project(camera);
   return { x: (v.x * 0.5 + 0.5) * innerWidth, y: (-v.y * 0.5 + 0.5) * innerHeight };
@@ -1636,22 +1663,26 @@ addEventListener('click', (e) => {
   if (busy) return;
   if (focus === journal) return closeJournal();
   if (focus === envelope) return closeEnvelope();
+  if (focus === bouquet) return closeBouquet();
   if (!hovered) return;
   const kind = hovered.userData.kind;
   if (kind === 'journal') openJournal();
   else if (kind === 'envelope') openEnvelope();
+  else if (kind === 'bouquet') openBouquet();
   else if (kind === 'intercom') pressIntercom();
 });
 addEventListener('keydown', (e) => {
   if (e.key !== 'Escape' || busy) return;
   if (focus === journal) closeJournal();
   else if (focus === envelope) closeEnvelope();
+  else if (focus === bouquet) closeBouquet();
   else UI.closeChat();
 });
 UI.onBackdrop(() => {
   if (busy) return;
   if (focus === journal) closeJournal();
   else if (focus === envelope) closeEnvelope();
+  else if (focus === bouquet) closeBouquet();
 });
 
 // ---------- dev panel ----------
@@ -1784,7 +1815,7 @@ function frame(now) {
   requestAnimationFrame(frame);
 }
 
-UI.init({ pages });
+UI.init({ pages, atlas: atlasCanvas });
 // tick(n): run n frames by hand, for testing while the page is in the background
-Object.assign(window.__three, { openJournal, closeJournal, openEnvelope, closeEnvelope, pressIntercom, tick: (n = 1) => { for (let i = 0; i < n; i++) frame(last + 16); } });
+Object.assign(window.__three, { openJournal, closeJournal, openEnvelope, closeEnvelope, pressIntercom, tick: (n = 1) => { for (let i = 0; i < n; i++) frame(last + 16); }, openBouquet, closeBouquet });
 requestAnimationFrame((t) => { last = t; frame(t); UI.reveal(); });

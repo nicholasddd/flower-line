@@ -16,7 +16,7 @@ export const FLOWERS = [
   { key: 'tulips',         name: 'Tulips',         height: 0.55, tint: '#f28a2e', rows: 1, hueVar: 0.30 },
   { key: 'irises',         name: 'Irises',         height: 0.80, tint: '#6a4fb8', rows: 1, hueVar: 0.04 },
   { key: 'azaleas',        name: 'Azaleas',        height: 0.80, tint: '#f2c6d6', rows: 0, hueVar: 0.05 },
-  { key: 'sunflowers',     name: 'Sunflowers',     height: 1.75, tint: '#efc028', rows: 1, hueVar: 0.00 },
+  { key: 'sunflowers',     name: 'Sunflowers',     height: 1.00, tint: '#efc028', rows: 1, hueVar: 0.00 },
   { key: 'violets',        name: 'Violets',        height: 0.30, tint: '#6f6cc4', rows: 0, hueVar: 0.05 },
 ];
 
@@ -644,6 +644,39 @@ export const BOUQUETS = [
 ];
 
 const keyIndex = (k) => FLOWERS.findIndex((f) => f.key === k);
+const BLOOM_CROP = { violets: [40, 100, 180, 150], begonias: [40, 100, 180, 150], azaleas: [40, 100, 180, 150] };
+
+// a simple painted bloom for stems with no flower art of their own
+function plainBloom(ctx, R, x, y, r, colour) {
+  for (let i = 0; i < 7; i++) {
+    const a = (i / 7) * TAU + R() * 0.3;
+    ctx.fillStyle = shadeHex(colour, (R() - 0.5) * 0.25);
+    ctx.beginPath();
+    ctx.ellipse(x + Math.cos(a) * r * 0.55, y + Math.sin(a) * r * 0.45, r * 0.55, r * 0.35, a, 0, TAU);
+    ctx.fill();
+  }
+  ctx.fillStyle = shadeHex(colour, -0.35);
+  ctx.beginPath();
+  ctx.arc(x, y, r * 0.22, 0, TAU);
+  ctx.fill();
+}
+
+// a small square picture of one stem's bloom, for the order list
+export function stemThumb(atlas, item, size = 96) {
+  const c = document.createElement('canvas');
+  c.width = c.height = size;
+  const ctx = c.getContext('2d');
+  const key = item.art;
+  if (key && keyIndex(key) >= 0) {
+    const cell = cellRect(keyIndex(key) * 2);
+    const crop = BLOOM_CROP[key] ?? [20, 4, 216, 176];
+    const side = Math.min(crop[2], crop[3]);
+    ctx.drawImage(atlas, cell.x + crop[0] + (crop[2] - side) / 2, cell.y + crop[1], side, side, 0, 0, size, size);
+  } else {
+    plainBloom(ctx, rng(item.id.length * 31), size / 2, size / 2, size * 0.42, item.colour ?? '#e9a3b4');
+  }
+  return c;
+}
 
 export function drawBouquet(ctx, atlas, b, cx, cy, size, seed) {
   const R = rng(seed);
@@ -682,11 +715,16 @@ export function drawBouquet(ctx, atlas, b, cx, cy, size, seed) {
   }
   spots.sort((p, q) => p.y - q.y);
   for (const p of spots) {
-    const cell = cellRect(keyIndex(p.f) * 2 + p.v);
     const bw = s * 0.4;
-    // only the top part of the cell holds the bloom
-    const crop = p.f === 'violets' || p.f === 'begonias' || p.f === 'azaleas' ? [40, 100, 180, 150] : [20, 4, 216, 176];
-    ctx.drawImage(atlas, cell.x + crop[0], cell.y + crop[1], crop[2], crop[3], p.x - bw / 2, p.y - bw * 0.45, bw, bw * crop[3] / crop[2]);
+    const key = typeof p.f === 'string' ? p.f : p.f.art;
+    if (key && keyIndex(key) >= 0) {
+      const cell = cellRect(keyIndex(key) * 2 + p.v);
+      // only the top part of the cell holds the bloom
+      const crop = BLOOM_CROP[key] ?? [20, 4, 216, 176];
+      ctx.drawImage(atlas, cell.x + crop[0], cell.y + crop[1], crop[2], crop[3], p.x - bw / 2, p.y - bw * 0.45, bw, bw * crop[3] / crop[2]);
+    } else {
+      plainBloom(ctx, R, p.x, p.y - bw * 0.1, bw * 0.28, p.f.colour ?? '#e9a3b4');
+    }
   }
   // front wrap
   const g = ctx.createLinearGradient(cx - s * 0.3, 0, cx + s * 0.3, 0);
