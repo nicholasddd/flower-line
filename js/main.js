@@ -88,12 +88,20 @@ const U = {
   uLampSp: { value: LAMP.sp }, uLampOff: { value: LAMP.off }, uLampZ: { value: LAMP.z },
   uL: { value: L }, uGap: { value: GAP }, uGroundY: { value: GROUND_Y },
   uFEnd: { value: FIELD_END }, uCountry: { value: COUNTRY },
+  // stretches where the land behind gives way to the open sea
+  uSea: { value: [0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0] },
 };
 
 const GLSL_COMMON = /* glsl */`
 uniform float uTravel, uTime, uNight, uFogNear, uFogFar, uLampSp, uLampOff, uLampZ, uL, uGap, uGroundY, uWind, uRain;
 uniform vec3 uSunCol, uAmb, uSunDir, uFogCol, uLampCol;
-uniform float uFEnd[16], uCountry[16];
+uniform float uFEnd[16], uCountry[16], uSea[16];
+// how much of this point of the line looks out to sea, eased across the joins
+float seaW(float tx, float wid){
+  float fi = floor(tx/uL), local = tx - fi*uL;
+  float p = uSea[int(mod(fi - 1., 16.))], a = uSea[int(mod(fi, 16.))], b = uSea[int(mod(fi + 1., 16.))];
+  return mix(mix(p, a, smoothstep(-wid, wid, local)), b, smoothstep(uL - wid, uL + wid, local));
+}
 float hash12(vec2 p){ vec3 p3 = fract(vec3(p.xyx) * .1031); p3 += dot(p3, p3.yzx + 33.33); return fract((p3.x + p3.y) * p3.z); }
 float vnoise(vec2 p){ vec2 i = floor(p), f = fract(p); vec2 u = f*f*(3.-2.*f);
   return mix(mix(hash12(i), hash12(i+vec2(1,0)), u.x), mix(hash12(i+vec2(0,1)), hash12(i+vec2(1,1)), u.x), u.y); }
@@ -150,26 +158,56 @@ sky.renderOrder = -10;
 scene.add(sky);
 
 // ---------- distant hills ----------
-function hillLayer(z, base, amp, freq, color, haze, bumpy, seed) {
+// peak: height of a mountain range that rises and falls along the line.
+// sea: 0 hide this band over the sea, 1 draw the sea's horizon here, keep: how much stays as distant headland.
+function hillLayer(z, base, amp, freq, color, haze, bumpy, seed, { peak = 0, sea = 0, keep = 0 } = {}) {
   const m = new THREE.Mesh(
     new THREE.PlaneGeometry(2400, 220),
     new THREE.ShaderMaterial({
       fog: false,
-      uniforms: { ...U, uBase: { value: base }, uAmp: { value: amp }, uFreq: { value: freq }, uColor: { value: new THREE.Color(color) }, uHaze: { value: haze }, uBumpy: { value: bumpy }, uSeed: { value: seed } },
+      uniforms: { ...U, uBase: { value: base }, uAmp: { value: amp }, uFreq: { value: freq }, uColor: { value: new THREE.Color(color) }, uHaze: { value: haze }, uBumpy: { value: bumpy }, uSeed: { value: seed }, uPeak: { value: peak }, uSeaBand: { value: sea }, uKeep: { value: keep } },
       vertexShader: `varying vec3 vW; void main(){ vec4 w = modelMatrix*vec4(position,1.); vW = w.xyz; gl_Position = projectionMatrix*viewMatrix*w; }`,
       fragmentShader: GLSL_COMMON + /* glsl */`
-        uniform float uBase, uAmp, uFreq, uHaze, uBumpy, uSeed; uniform vec3 uColor;
+        uniform float uBase, uAmp, uFreq, uHaze, uBumpy, uSeed, uPeak, uSeaBand, uKeep; uniform vec3 uColor;
         varying vec3 vW;
         void main(){
           float tx = vW.x + uTravel;
           float h = uBase + uAmp * (fbm(vec2(tx*uFreq + uSeed, uSeed)) - .25);
           h += uBumpy * (abs(sin(tx*.35 + vnoise(vec2(tx*.08, uSeed))*6.)) * 1.6 + vnoise(vec2(tx*.6, 3.))*1.4);
+          if (uPeak > 0.) {
+            // broad massifs with rounded shoulders that come and go along the line
+            float range = smoothstep(.3, .65, fbm(vec2(tx*.0005 + uSeed*3., 1.7)));
+            float warp = fbm(vec2(tx*.0012, 9.));
+            float m = smoothstep(.25, .85, fbm(vec2(tx*uFreq*1.1 + warp*2.5 + uSeed, 5.)));
+            h += uPeak * range * (m*m*(3. - 2.*m)) + uPeak*.08*range*vnoise(vec2(tx*.03, 2.));
+          }
+          float sw = seaW(tx, 120.);
+          float seaTop = uGroundY + 8.5;
+          if (uSeaBand > .5) h = mix(h, seaTop, sw);
+          else h = mix(h, uBase - 60. + (h - uBase)*uKeep, sw);
           if (vW.y > h) discard;
           float rim = smoothstep(h - 3., h, vW.y);
           float n = vnoise(vec2(tx*uFreq*25., vW.y*.35));
           vec3 c = uColor * (uAmb + uSunCol*.55) * (.82 + .22*rim + .16*n);
+          if (uPeak > 0.) {
+            // rocky streaks, then snow only near the summits
+            float streak = vnoise(vec2(tx*.05, vW.y*.03));
+            c *= .9 + .2*streak;
+            float snowLine = h - 10. - 8.*vnoise(vec2(tx*.02, 4.));
+            float snow = smoothstep(snowLine, snowLine + 6., vW.y + (streak - .5)*12.) * smoothstep(uBase + uPeak*.5, uBase + uPeak*.65, h);
+            c = mix(c, vec3(.86,.9,1.)*(uAmb*.8 + uSunCol*.45), snow*.8);
+          }
+          if (uSeaBand > .5 && sw > 0.) {
+            // the sea running out to the horizon: deeper blue below, paler and
+            // glinting towards the skyline
+            float t = clamp((vW.y - uGroundY) / 8.5, 0., 1.);
+            float glint = step(.8, vnoise(vec2(tx*.25 + uTime*.4, vW.y*6.)));
+            vec3 sea = mix(vec3(.03,.2,.4), vec3(.12,.36,.56), t*t) * (uAmb*.75 + uSunCol*.5);
+            sea += uSunCol * glint * .12 * t * (1. - uNight);
+            c = mix(c, sea, sw);
+          }
           c += uLampCol * uNight * .04 * step(.985, hash12(floor(vec2(tx*.4, vW.y*.8)))) * step(vW.y, h - 1.);
-          c = mix(c, uFogCol, clamp(uHaze + (uFogNear < 10. ? .5 : 0.), 0., 1.));
+          c = mix(c, uFogCol, clamp(uHaze * (1. - .7*uSeaBand*sw) + (uFogNear < 10. ? .5 : 0.), 0., 1.));
           gl_FragColor = vec4(c, 1.);
         }`,
     })
@@ -178,9 +216,10 @@ function hillLayer(z, base, amp, freq, color, haze, bumpy, seed) {
   scene.add(m);
   return m;
 }
+hillLayer(-640, GROUND_Y + 10, 30, 0.002, '#7489b0', 0.4, 0, 5.3, { peak: 120, keep: 0.35 });
 hillLayer(-560, GROUND_Y + 40, 70, 0.0025, '#6f86a8', 0.55, 0, 3.1);
 hillLayer(-330, GROUND_Y + 14, 36, 0.005, '#4f6a6a', 0.35, 0, 8.7);
-hillLayer(-150, GROUND_Y + 3, 6, 0.02, '#2f4a2a', 0.18, 1, 1.3);
+hillLayer(-150, GROUND_Y + 3, 6, 0.02, '#2f4a2a', 0.18, 1, 1.3, { sea: 1 });
 
 // ---------- ground ----------
 const ground = new THREE.Mesh(
@@ -231,6 +270,13 @@ const ground = new THREE.Mesh(
         float h = hash12(floor(vec2(tx/48., z/26.)));
         vec3 patchC = h < .22 ? vec3(.45,.4,.1) : h < .5 ? vec3(.15,.23,.07) : h < .68 ? vec3(.3,.27,.12) : h < .85 ? vec3(.22,.3,.1) : vec3(.34,.24,.14);
         col = mix(col, patchC*(.8+.4*n1), far*.7);
+        // past the shore the land gives way to open sea
+        float sea = seaW(tx, 60.) * smoothstep(-58., -64., z + 4.*fbm(vec2(tx*.03, 7.)));
+        if (sea > 0.) {
+          float rip = vnoise(vec2(tx*.5, z*2.)) * vnoise(vec2(tx*.12 + uTime*.3, z*.6));
+          vec3 sc = mix(vec3(.06,.24,.38), vec3(.18,.4,.54), smoothstep(-70., -300., z)) + rip*.06;
+          col = mix(col, sc, sea);
+        }
         col *= 1. - uRain*.25;
         vec3 c = col * (uAmb + uSunCol*(max(uSunDir.y, 0.)*.9 + .1));
         c += col * lampLight(tx, z, uGroundY);
@@ -1096,7 +1142,7 @@ const signs = Array.from({ length: 3 }, () => {
 });
 
 // ---------- the countryside behind the flowers ----------
-const THEMES = ['village', 'farm', 'hills', 'lake', 'farm', 'village', 'windmills', 'forest', 'village', 'farm', 'windmills', 'lake', 'forest', 'hills', 'farm', 'village'];
+const THEMES = ['village', 'farm', 'hills', 'lake', 'coast', 'village', 'windmills', 'forest', 'village', 'farm', 'windmills', 'lake', 'forest', 'coast', 'farm', 'village'];
 const G = {
   box: new THREE.BoxGeometry(1, 1, 1).translate(0, 0.5, 0),
   roof: (() => {
@@ -1264,6 +1310,11 @@ function spawnField(k) {
     case 'forest': {
       for (let i = 0; i < 70; i++) addTree(g, R, cx + xr(-90, 90), zr(52, 92), 1 + R() * 0.7, R() < 0.25);
       for (let i = 0; i < 14; i++) addTree(g, R, xr(0, L), zr(55, 92), 1 + R() * 0.5);
+      break;
+    }
+    case 'coast': {
+      for (let i = 0; i < 4; i++) addHouse(g, R, xr(20, L - 20), zr(50, 56), { w: 4.5, d: 3.5, h: 2.6 });
+      for (let i = 0; i < 12; i++) addTree(g, R, xr(0, L), zr(48, 56), 0.7 + R() * 0.3);
       break;
     }
     case 'lake': {
