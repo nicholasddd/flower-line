@@ -16,13 +16,26 @@ const CAM_POS = new THREE.Vector3(0, 1.32, 1.3);
 const CAM_TARGET = new THREE.Vector3(0, 1.38, -1);
 const WALL_Z = -1.0;
 const WIN = { cx: 0, cy: 1.5, w: 1.9, h: 1.1, r: 0.24 };
-const GROUND_Y = 0.45;
-// Each stretch of line is one flower field, then open countryside before the
-// next: roughly the rhythm of a real ride. Field lengths vary per stretch, and
-// the same tables drive the shaders and the CPU-side scenery.
+const GROUND_Y = -0.9; // the fields lie below the embankment the line runs on
+// Each stretch of line is one long flower field; everything else lies beyond
+// it in the distance. The same tables drive the shaders and the scenery.
 const L = 440, GAP = 3.5, PERIOD = L * 16, WRAP = PERIOD * 16;
-const FIELD_END = (() => { const R = rng(31); return Array.from({ length: 16 }, () => 200 + R() * 90); })();
+const FIELD_END = Array(16).fill(L - GAP - 2); // fields run end to end, a path between each
 const COUNTRY = [1, 0, 2, 1, 0, 1, 2, 0, 1, 2, 0, 1, 0, 2, 1, 0]; // 0 meadow, 1 rice paddy, 2 ploughed
+// Each field gets a landscape and light that suit the flower: orange
+// ranunculus on sea cliffs, blue hydrangeas by a lake, violets in a wood,
+// pink carnations on soft hills, dahlias at the edge of a city.
+//                 roses      peonies  carnations begonias daisies    hydrangeas orchids    lilies
+const THEMES = ['village', 'japan', 'hills', 'town', 'pasture', 'lake', 'seaside', 'river',
+//  chrysanth. ranunculus dahlias tulips       irises       azaleas  sunflowers violets
+  'japan', 'coast', 'city', 'windmills', 'mountains', 'hills', 'farm', 'forest'];
+const STREET = THEMES.map((t) => (t === 'town' || t === 'japan' || t === 'city' ? 1 : 0));
+const WATER = THEMES.map((t) => (t === 'coast' || t === 'seaside' ? 1 : t === 'lake' ? 2 : 0));
+// sky and haze tint per field, and how strongly
+const GRADE = [
+  ['#ffd8c8', 0.25], ['#ffd6e4', 0.35], ['#ffc8dc', 0.45], ['#ffe0e6', 0.2], ['#ffffff', 0], ['#c4d8ff', 0.35], ['#e2f2ff', 0.2], ['#ffdce8', 0.25],
+  ['#ffd6e4', 0.3], ['#ffd8b0', 0.35], ['#e6d0ff', 0.3], ['#ffdcb8', 0.3], ['#d0d4ff', 0.3], ['#ffd0e4', 0.4], ['#ffe4b0', 0.35], ['#d0c8ff', 0.4],
+].map(([c, k]) => new THREE.Color(1, 1, 1).lerp(new THREE.Color(c), k));
 const LAMP = { sp: 32, off: 12, z: -5.5 };
 const POLE = { sp: 48, off: 30, z: -1.9 };
 const SPEED = 10;
@@ -87,17 +100,39 @@ const U = {
   uLampCol: { value: new THREE.Color('#ffb066') },
   uLampSp: { value: LAMP.sp }, uLampOff: { value: LAMP.off }, uLampZ: { value: LAMP.z },
   uL: { value: L }, uGap: { value: GAP }, uGroundY: { value: GROUND_Y },
-  uFEnd: { value: FIELD_END }, uCountry: { value: COUNTRY },
+  uFEnd: { value: FIELD_END }, uCountry: { value: COUNTRY }, uWater: { value: WATER }, uStreet: { value: STREET },
 };
 
 const GLSL_COMMON = /* glsl */`
 uniform float uTravel, uTime, uNight, uFogNear, uFogFar, uLampSp, uLampOff, uLampZ, uL, uGap, uGroundY, uWind, uRain;
 uniform vec3 uSunCol, uAmb, uSunDir, uFogCol, uLampCol;
-uniform float uFEnd[16], uCountry[16], uCloudShade;
+uniform float uFEnd[16], uCountry[16], uCloudShade, uWater[16], uStreet[16];
 float hash12(vec2 p){ vec3 p3 = fract(vec3(p.xyx) * .1031); p3 += dot(p3, p3.yzx + 33.33); return fract((p3.x + p3.y) * p3.z); }
 float vnoise(vec2 p){ vec2 i = floor(p), f = fract(p); vec2 u = f*f*(3.-2.*f);
   return mix(mix(hash12(i), hash12(i+vec2(1,0)), u.x), mix(hash12(i+vec2(0,1)), hash12(i+vec2(1,1)), u.x), u.y); }
 float fbm(vec2 p){ float v = 0., a = .5; for(int i=0;i<5;i++){ v += a*vnoise(p); p = p*2.03 + 17.1; a *= .5; } return v; }
+// how much of this stretch of line has water of a kind (1 sea, 2 lake),
+// blended across the joins between stretches
+float waterW(float tx, float kind, float wid){
+  float fi = floor(tx/uL), local = tx - fi*uL;
+  float p = step(abs(uWater[int(mod(fi - 1., 16.))] - kind), .5);
+  float a = step(abs(uWater[int(mod(fi, 16.))] - kind), .5);
+  float b = step(abs(uWater[int(mod(fi + 1., 16.))] - kind), .5);
+  return mix(mix(p, a, smoothstep(-wid, wid, local)), b, smoothstep(uL - wid, uL + wid, local));
+}
+// the shoreline: just past the flowers, pushed out round a headland mid-stretch
+float shoreZ(float tx){
+  float local = tx - floor(tx/uL)*uL;
+  float head = smoothstep(230., 270., local) * smoothstep(350., 310., local);
+  return -46. - 5.*fbm(vec2(tx*.03, 7.)) - 44.*head;
+}
+// Beyond the flowers the land rises into hills, so farms, lakes and villages
+// show over the field. Flat where there is water. Mirrored by riseAt() in JS.
+float riseAt(float tx, float z){
+  float lake = waterW(tx, 2., 60.), sea = waterW(tx, 1., 60.);
+  float R = max(2., 7. + 5.*sin(tx*.0047) + 3.*sin(tx*.013 + 1.3));
+  return R * smoothstep(-44., -154., z) * (1. - max(sea, lake));
+}
 vec3 lampLight(float tx, float z, float y){
   float lx = floor((tx - uLampOff)/uLampSp + .5)*uLampSp + uLampOff;
   float dx = tx - lx, dz = z - uLampZ, dy = y - (uGroundY + 3.0);
@@ -150,38 +185,48 @@ sky.renderOrder = -10;
 scene.add(sky);
 
 // ---------- distant hills ----------
-function hillLayer(z, base, amp, freq, color, haze, bumpy, seed, peak = 0) {
+function hillLayer(z, base, amp, freq, color, haze, bumpy, seed, peak = 0, seaKeep = 0, overLake = 0) {
   const m = new THREE.Mesh(
     new THREE.PlaneGeometry(2400, 420),
     new THREE.ShaderMaterial({
       fog: false,
-      uniforms: { ...U, uBase: { value: base }, uAmp: { value: amp }, uFreq: { value: freq }, uColor: { value: new THREE.Color(color) }, uHaze: { value: haze }, uBumpy: { value: bumpy }, uSeed: { value: seed }, uPeak: { value: peak } },
+      uniforms: { ...U, uBase: { value: base }, uAmp: { value: amp }, uFreq: { value: freq }, uColor: { value: new THREE.Color(color) }, uHaze: { value: haze }, uBumpy: { value: bumpy }, uSeed: { value: seed }, uPeak: { value: peak }, uSeaKeep: { value: seaKeep }, uOverLake: { value: overLake } },
       vertexShader: `varying vec3 vW; void main(){ vec4 w = modelMatrix*vec4(position,1.); vW = w.xyz; gl_Position = projectionMatrix*viewMatrix*w; }`,
       fragmentShader: GLSL_COMMON + /* glsl */`
-        uniform float uBase, uAmp, uFreq, uHaze, uBumpy, uSeed, uPeak; uniform vec3 uColor;
+        uniform float uBase, uAmp, uFreq, uHaze, uBumpy, uSeed, uPeak, uSeaKeep, uOverLake; uniform vec3 uColor;
         varying vec3 vW;
         void main(){
           float tx = vW.x + uTravel;
           float h = uBase + uAmp * (fbm(vec2(tx*uFreq + uSeed, uSeed)) - .25);
           h += uBumpy * (abs(sin(tx*.35 + vnoise(vec2(tx*.08, uSeed))*6.)) * 1.6 + vnoise(vec2(tx*.6, 3.))*1.4);
           // mountain ranges rise out of the plain for a while, then fall away
-          float range = 0., ridge = 0.;
+          float range = 0.;
           if (uPeak > 0.) {
-            range = smoothstep(.32, .62, fbm(vec2(tx*.0005 + uSeed*3., 1.7)));
-            ridge = 1. - abs(fbm(vec2(tx*uFreq*2.4 + uSeed, 5.))*2. - 1.);
-            h += uPeak * range * pow(ridge, 2.4);
+            // broad massifs with rounded shoulders: warped, low-frequency
+            // noise rather than sharp ridges
+            range = smoothstep(.3, .65, fbm(vec2(tx*.0005 + uSeed*3., 1.7)));
+            float warp = fbm(vec2(tx*.0012, 9.));
+            float m = fbm(vec2(tx*uFreq*1.1 + warp*2.5 + uSeed, 5.));
+            m = smoothstep(.25, .85, m);
+            h += uPeak * range * (m*m*(3. - 2.*m)) + uPeak*.08*range*vnoise(vec2(tx*.03, 2.));
           }
+          // over the sea the land falls away, leaving only distant headlands
+          float sw = waterW(tx, 1., 160.);
+          h = mix(h, uBase - 60. + (h - uBase)*uSeaKeep, sw);
+          h = mix(h, uBase - 60., waterW(tx, 2., 160.)*(1. - uOverLake));
           if (vW.y > h) discard;
           float rim = smoothstep(h - 3., h, vW.y);
           float n = vnoise(vec2(tx*uFreq*25., vW.y*.35));
           vec3 c = uColor * (uAmb + uSunCol*.55) * (.82 + .22*rim + .16*n);
           if (uPeak > 0.) {
             // rocky streaks, lit faces, then snow above the line
-            float streak = vnoise(vec2(tx*.08, vW.y*.02));
-            c *= .85 + .3*streak;
-            float snowLine = uBase + uPeak*.62 + (vnoise(vec2(tx*.04, 2.)) - .5)*22.;
-            float snow = smoothstep(snowLine, snowLine + 6., vW.y + streak*10.);
-            c = mix(c, vec3(.92,.94,1.)*(uAmb*.7 + uSunCol*.6), snow);
+            float streak = vnoise(vec2(tx*.05, vW.y*.03));
+            c *= .9 + .2*streak;
+            // snow only near the summits, patchy, bluish in the haze
+            float snowLine = h - 10. - 8.*vnoise(vec2(tx*.02, 4.));
+            float snow = smoothstep(snowLine, snowLine + 6., vW.y + (streak - .5)*12.)
+              * smoothstep(uBase + uPeak*.5, uBase + uPeak*.65, h) * (1. - sw);
+            c = mix(c, vec3(.86,.9,1.)*(uAmb*.8 + uSunCol*.45), snow*.8);
           }
           c += uLampCol * uNight * .04 * step(.985, hash12(floor(vec2(tx*.4, vW.y*.8)))) * step(vW.y, h - 1.);
           c = mix(c, uFogCol, clamp(uHaze + (uFogNear < 10. ? .5 : 0.), 0., 1.));
@@ -193,18 +238,18 @@ function hillLayer(z, base, amp, freq, color, haze, bumpy, seed, peak = 0) {
   scene.add(m);
   return m;
 }
-hillLayer(-640, GROUND_Y + 10, 30, 0.002, '#7489b0', 0.3, 0, 5.3, 140);
-hillLayer(-560, GROUND_Y + 40, 70, 0.0025, '#6f86a8', 0.55, 0, 3.1);
+hillLayer(-640, GROUND_Y + 10, 30, 0.002, '#7489b0', 0.4, 0, 5.3, 120, 0.35, 1);
+hillLayer(-560, GROUND_Y + 40, 70, 0.0025, '#6f86a8', 0.55, 0, 3.1, 0, 0, 1);
 hillLayer(-330, GROUND_Y + 14, 36, 0.005, '#4f6a6a', 0.35, 0, 8.7);
-hillLayer(-150, GROUND_Y + 3, 6, 0.02, '#2f4a2a', 0.18, 1, 1.3);
+hillLayer(-150, GROUND_Y + 12, 6, 0.02, '#2f4a2a', 0.18, 1, 1.3);
 
 // ---------- ground ----------
 const ground = new THREE.Mesh(
-  new THREE.PlaneGeometry(1600, 600).rotateX(-Math.PI / 2).translate(0, GROUND_Y, -300 - 1.25),
+  new THREE.PlaneGeometry(1600, 600, 200, 75).rotateX(-Math.PI / 2).translate(0, GROUND_Y, -300 - 1.25),
   new THREE.ShaderMaterial({
     fog: false,
     uniforms: { ...U, uTints: { value: FLOWERS.map((f) => new THREE.Color(f.tint)) }, uRows: { value: FLOWERS.map((f) => f.rows) } },
-    vertexShader: `varying vec3 vW; void main(){ vec4 w = modelMatrix*vec4(position,1.); vW = w.xyz; gl_Position = projectionMatrix*viewMatrix*w; }`,
+    vertexShader: GLSL_COMMON + `varying vec3 vW; void main(){ vec4 w = modelMatrix*vec4(position,1.); w.y += riseAt(w.x + uTravel, w.z); vW = w.xyz; gl_Position = projectionMatrix*viewMatrix*w; }`,
     fragmentShader: GLSL_COMMON + /* glsl */`
       uniform vec3 uTints[16]; uniform float uRows[16];
       varying vec3 vW;
@@ -215,9 +260,10 @@ const ground = new THREE.Mesh(
         vec3 col = mix(vec3(.08,.15,.045), vec3(.19,.26,.08), n1) * (.8 + .4*n2);
         float bed = smoothstep(-1.3, -2.2, z) * smoothstep(-50., -39., z);
         float fEnd = uFEnd[t]; int ck = int(uCountry[t]);
-        float inField = smoothstep(uGap, uGap + 3., local) * smoothstep(fEnd, fEnd - 3., local);
-        float onPath = step(local, uGap) + step(fEnd + .8, local) * step(local, fEnd + .8 + uGap);
-        float country = step(fEnd + .8 + uGap, local);
+        float band = smoothstep(-15., -13., z); // flowers by the line, all the way along
+        float inField = mix(smoothstep(uGap, uGap + 3., local) * smoothstep(fEnd, fEnd - 3., local), smoothstep(uGap, uGap + 3., local), band);
+        float onPath = step(local, uGap) + step(fEnd + .8, local) * step(local, fEnd + .8 + uGap) * (1. - band);
+        float country = step(fEnd + .8 + uGap, local) * (1. - band);
         vec3 soil = vec3(.15,.1,.06) * (.8 + .4*n2);
         vec3 bedCol = mix(vec3(.07,.13,.04), uTints[t]*.6, smoothstep(-5., -32., z)*.85);
         if (uRows[t] > .5 && fract(tx/1.5) < .28) bedCol = mix(soil, bedCol, smoothstep(-25., -45., z));
@@ -227,9 +273,9 @@ const ground = new THREE.Mesh(
         if (ck == 1) {
           // rice paddies: bright young rice in plots split by low earth bunds,
           // some still flooded and catching the sky
-          cc = vec3(.2,.38,.07) * (.85 + .3*n1);
+          cc = vec3(.26,.42,.12) * (.85 + .3*n1);
           vec2 plot = vec2(tx/11., z/9.);
-          if (hash12(floor(plot) + fi) < .35) cc = mix(cc, uFogCol*.55 + vec3(.0,.04,.03), .6 - .3*n2);
+          if (hash12(floor(plot) + fi) < .35) cc = mix(cc, vec3(.2,.32,.26) + uFogCol*.12, .7 - .2*n2);
           float bund = max(step(fract(plot.x), .06), step(fract(plot.y), .08));
           cc = mix(cc, vec3(.2,.17,.09)*(.8+.4*n2), bund*.8);
         } else if (ck == 2) {
@@ -247,8 +293,41 @@ const ground = new THREE.Mesh(
         float h = hash12(floor(vec2(tx/48., z/26.)));
         vec3 patchC = h < .22 ? vec3(.45,.4,.1) : h < .5 ? vec3(.15,.23,.07) : h < .68 ? vec3(.3,.27,.12) : h < .85 ? vec3(.22,.3,.1) : vec3(.34,.24,.14);
         col = mix(col, patchC*(.8+.4*n1), far*.7);
+        // a road with a dashed centre line just past the field
+        if (uStreet[t] > .5 && z < -43.5 && z > -53.) {
+          col = vec3(.62,.6,.56);
+          if (z < -44.5 && z > -51.5) {
+            col = vec3(.24,.24,.26)*(.9 + .2*n2);
+            if (abs(z + 48.) < .12 && fract(tx/6.) < .5) col = vec3(.9,.88,.8);
+          }
+        }
+        // sea or a wide lake beyond the shore
+        float sea = waterW(tx, 1., 40.), lake = waterW(tx, 2., 40.);
+        float zs = shoreZ(tx);
+        float wet = 0.;
+        vec3 wcol = vec3(0.);
+        if (sea > 0.) {
+          float s = smoothstep(zs + .5, zs - .5, z);
+          col = mix(col, vec3(.55,.5,.4)*(.8+.4*n2), sea*smoothstep(zs + 4., zs + 1., z)*(1. - s));
+          wet = sea*s;
+          wcol = mix(vec3(.04,.2,.38), vec3(.12,.32,.5), smoothstep(-60., -300., z));
+        }
+        if (lake > 0.) {
+          float s = smoothstep(zs + .5, zs - .5, z);
+          col = mix(col, vec3(.3,.36,.16)*(.8+.4*n2), lake*smoothstep(zs + 4., zs + 1., z)*(1. - s)); // reedy bank
+          wet = max(wet, lake*s);
+          wcol = mix(wcol, mix(vec3(.08,.3,.42), vec3(.2,.42,.52), smoothstep(-60., -300., z)), lake);
+        }
+        if (wet > 0.) {
+          // ripples and glints of sky
+          float rip = vnoise(vec2(tx*.6, z*3.)) * vnoise(vec2(tx*.15 + uTime*.3, z*.8));
+          wcol = mix(wcol, uFogCol, .08 + .12*rip);
+          wcol += uSunCol * pow(rip, 3.) * .5 * (1. - uNight);
+          col = mix(col, wcol, wet);
+        }
         col *= 1. - uRain*.25;
         vec3 c = col * (uAmb + uSunCol*(max(uSunDir.y, 0.)*.9 + .1));
+        if (wet > 0.) c = mix(c, wcol * (uAmb*.6 + uSunCol*.4) + wcol*.15, wet);
         c += col * lampLight(tx, z, uGroundY);
         gl_FragColor = vec4(fogIt(c, vW), 1.);
       }`,
@@ -301,12 +380,13 @@ function buildFlowerField() {
         float tx = x + uTravel;
         float fi = floor(tx/uL); int t = int(mod(fi, 16.)); float local = tx - fi*uL;
         float fEnd = uFEnd[t]; int ck = int(uCountry[t]);
-        bool country = local > fEnd + .8 + uGap;
+        bool band = -aBase.y < 14.; // flowers by the line, all the way along
+        bool country = local > fEnd + .8 + uGap && !band;
         bool isF = aKind < .5 && !country;
         float far = max(0., -aBase.y - 6.) / 40.;
         float h = isF ? uHeights[t]*(.9 + .2*aRand.y) : (.28 + .32*aRand.y);
         h *= 1. + far*(isF ? .3 : 1.3);
-        float edge = min(local - uGap, fEnd - local);
+        float edge = band ? local - uGap : min(local - uGap, fEnd - local);
         if (isF && (edge < 0. || fract(aRand.w*7.3)*6. > edge)) h = 0.;
         if (country) {
           if (ck == 1) {
@@ -340,6 +420,7 @@ function buildFlowerField() {
           (.9 + .2*aRand.z) * (.93 + .14*drift) * mix(.7, 1., smoothstep(.92, 1.08, hRel)),
           (.92 + .16*fract(aRand.z*13.7)),
           0.);
+        if (country && ck == 1) vTone.x *= 1.5; // young rice is a fresh, light green
         vW = wp; vTop = uv.y;
         gl_Position = projectionMatrix * viewMatrix * vec4(wp, 1.);
       }`,
@@ -364,7 +445,7 @@ function buildFlowerField() {
         alb = max(mix(vec3(lum), alb, vTone.y), 0.);           // deeper or paler
         alb *= mix(.6, 1., smoothstep(.06, .5, lum));           // darker petal folds
         float soft = texture2D(uAtlas, auv, 3.).a;
-        alb *= 1. - (1. - smoothstep(.55, .97, soft)) * .7;      // shaded edge round each bloom
+        alb *= 1. - (1. - smoothstep(.55, .97, soft)) * mix(.7, .3, smoothstep(.5, .85, lum));      // shaded edge round each bloom
         alb *= vTone.x;
         alb *= 1. - uRain*.2;
         float shade = mix(.32, 1., smoothstep(0., .6, vTop));
@@ -872,24 +953,22 @@ const signMats = FLOWERS.map((f) => new THREE.MeshStandardMaterial({ map: tex(si
 const woodMat = new THREE.MeshStandardMaterial({ color: '#5a4230', roughness: 0.9 });
 const signs = Array.from({ length: 3 }, () => {
   const g = new THREE.Group();
-  const board = shadowy(new THREE.Mesh(new THREE.PlaneGeometry(1.25, 0.39), signMats[0]), true, false);
-  board.position.y = GROUND_Y + 1.05;
+  const board = shadowy(new THREE.Mesh(new THREE.PlaneGeometry(2.2, 0.69), signMats[0]), true, false);
+  board.position.y = GROUND_Y + 1.6;
   for (const s of [-1, 1]) {
     const leg = shadowy(new THREE.Mesh(new THREE.BoxGeometry(0.06, 1.2, 0.06), woodMat), true, false);
-    leg.position.set(s * 0.5, GROUND_Y + 0.6, -0.04);
+    leg.position.set(s * 0.9, GROUND_Y + 0.8, -0.04);
+    leg.scale.y = 1.4;
     g.add(leg);
   }
   g.add(board);
   g.userData.board = board;
-  g.position.z = -3.4;
+  g.position.z = -8;
   outside.add(g);
   return g;
 });
 
 // ---------- the countryside behind the flowers ----------
-// A run through European and Japanese countryside: towns, rivers, pastures,
-// mountain valleys, temples and farms.
-const THEMES = ['village', 'pasture', 'river', 'mountains', 'town', 'farm', 'japan', 'river', 'forest', 'pasture', 'windmills', 'lake', 'town', 'japan', 'farm', 'mountains'];
 const G = {
   box: new THREE.BoxGeometry(1, 1, 1).translate(0, 0.5, 0),
   roof: (() => {
@@ -934,6 +1013,7 @@ const MAT = {
 };
 const pick = (arr, R) => arr[Math.floor(R() * arr.length)];
 
+
 function addTree(g, R, x, z, s = 1, tall = false, leaf = null) {
   const t = new THREE.Group();
   const h = (tall ? 2.2 : 1.6 + R() * 1.4) * s;
@@ -968,7 +1048,7 @@ function addHouse(g, R, x, z, o = {}) {
   const body = new THREE.Mesh(G.box, o.wall ?? pick(MAT.walls, R));
   body.scale.set(w, h, d);
   const roof = new THREE.Mesh(G.roof, o.roof ?? pick(MAT.roofs, R));
-  const sy = (h * 0.62) / 0.45;
+  const sy = (Math.min(w, d) * 0.48) / 0.45;
   if (o.ridgeX ?? R() < 0.6) { roof.rotation.y = Math.PI / 2; roof.scale.set(d * 1.12, sy, w * 1.08); }
   else roof.scale.set(w * 1.1, sy, d * 1.1);
   roof.position.y = h;
@@ -1194,6 +1274,111 @@ function addChurch(g, R, x, z) {
   g.add(c);
 }
 
+function addLighthouse(g, x, z) {
+  const l = new THREE.Group();
+  const tower = new THREE.Mesh(G.tower, MAT.mill);
+  tower.scale.set(0.9, 2.2, 0.9);
+  const band = new THREE.Mesh(G.trunk, MAT.vermilion);
+  band.scale.set(9, 2.2, 9);
+  band.position.y = 8;
+  const lamp = new THREE.Mesh(G.box, MAT.win);
+  lamp.scale.set(1.3, 1.4, 1.3);
+  lamp.position.y = 15.4;
+  const cap = new THREE.Mesh(G.cap, MAT.vermilion);
+  cap.scale.set(0.8, 0.9, 0.8);
+  cap.position.y = 16.8;
+  l.add(tower, band, lamp, cap);
+  l.position.set(x, GROUND_Y, z);
+  g.add(l);
+}
+
+function addCar(g, R, x, z) {
+  const c = new THREE.Group();
+  const paint = new THREE.MeshStandardMaterial({ color: pick(['#c8d4dc', '#e9e6e0', '#b8423a', '#3a5a8a', '#2e2e34', '#d9b24a'], R), roughness: 0.4 });
+  const body = new THREE.Mesh(G.box, paint);
+  body.scale.set(4, 0.8, 1.75);
+  body.position.y = 0.3;
+  const cab = new THREE.Mesh(G.box, MAT.hoof);
+  cab.scale.set(2.1, 0.65, 1.6);
+  cab.position.set(-0.2, 1.1, 0);
+  c.add(body, cab);
+  c.position.set(x, GROUND_Y, z);
+  c.rotation.y = R() < 0.5 ? 0 : Math.PI / 2;
+  g.add(c);
+}
+
+// a corner convenience store: white box, coloured bands, a lit sign and a
+// glass front that glows at night
+const STORE = {
+  glass: new THREE.MeshStandardMaterial({ color: '#9fb8c4', emissive: '#fff2d8', emissiveIntensity: 0, roughness: 0.2 }),
+  bands: ['#2f9a5a', '#e8822e', '#2f6fc4'].map((c) => new THREE.MeshStandardMaterial({ color: c, roughness: 0.6 })),
+};
+function addStore(g, R, x, z) {
+  const s = new THREE.Group();
+  const body = new THREE.Mesh(G.box, MAT.walls[3]);
+  body.scale.set(12, 4, 9);
+  const front = new THREE.Mesh(G.plane, STORE.glass);
+  front.scale.set(9, 2.2, 1);
+  front.position.set(-0.8, 1.3, 4.52);
+  s.add(body, front);
+  STORE.bands.forEach((m, i) => {
+    const b = new THREE.Mesh(G.box, m);
+    b.scale.set(12.05, 0.28, 9.05);
+    b.position.y = 2.75 + i * 0.3;
+    s.add(b);
+  });
+  const sign = new THREE.Mesh(G.box, STORE.glass);
+  sign.scale.set(1.4, 1.4, 0.3);
+  sign.position.set(8, 4.2, 3);
+  const post = new THREE.Mesh(G.box, MAT.hoof);
+  post.scale.set(0.2, 4.2, 0.2);
+  post.position.set(8, 0, 3);
+  s.add(sign, post);
+  // vending machines by the door
+  for (let i = 0; i < 2; i++) {
+    const v = new THREE.Mesh(G.box, i ? STORE.bands[2] : MAT.walls[3]);
+    v.scale.set(0.9, 1.8, 0.7);
+    v.position.set(4.6 + i, 0, 5);
+    s.add(v);
+  }
+  s.position.set(x, GROUND_Y, z);
+  g.add(s);
+}
+
+function addUtilityPoles(g, x0, x1, z) {
+  let prev = null;
+  for (let x = x0; x <= x1; x += 32) {
+    const p = new THREE.Mesh(G.trunk, MAT.stone);
+    p.scale.set(1.3, 8, 1.3);
+    p.position.set(x, GROUND_Y, z);
+    const arm = new THREE.Mesh(G.box, MAT.hoof);
+    arm.scale.set(0.12, 0.12, 1.6);
+    arm.position.set(x, GROUND_Y + 7.4, z);
+    g.add(p, arm);
+    if (prev != null) for (const dz of [-0.6, 0.6]) {
+      const w = new THREE.Mesh(G.box, MAT.hoof);
+      w.scale.set(x - prev, 0.03, 0.03);
+      w.position.set((x + prev) / 2, GROUND_Y + 7.25, z + dz);
+      g.add(w);
+    }
+    prev = x;
+  }
+}
+
+// a road behind the field: poles and wires, a convenience store, cars, and a
+// row of small houses facing it
+function addStreet(g, R, theme) {
+  addUtilityPoles(g, 2, L - 2, -43);
+  const storeAt = 60 + R() * (L - 120);
+  addStore(g, R, storeAt, -58.5);
+  for (let x = 4 + R() * 6; x < L - 6; x += 9 + R() * 6) {
+    if (Math.abs(x - storeAt) < 11) continue;
+    if (theme === 'japan') addJapaneseHouse(g, R, x, -57 - R() * 3);
+    else addHouse(g, R, x, -57 - R() * 3, { h: 3 + R() * 1.6, rot: 0 });
+  }
+  for (let i = 0; i < 7; i++) addCar(g, R, R() * L, R() < 0.5 ? -46.5 : -49.6);
+}
+
 function spawnField(k) {
   const g = new THREE.Group();
   const R = rng(k * 7919 + 13);
@@ -1248,27 +1433,20 @@ function spawnField(k) {
       break;
     }
     case 'forest': {
-      for (let i = 0; i < 70; i++) addTree(g, R, cx + xr(-90, 90), zr(52, 92), 1 + R() * 0.7, R() < 0.25);
+      for (let i = 0; i < 110; i++) addTree(g, R, xr(0, L), zr(46, 92), 1 + R() * 0.7, R() < 0.25);
       for (let i = 0; i < 14; i++) addTree(g, R, xr(0, L), zr(55, 92), 1 + R() * 0.5);
       break;
     }
     case 'lake': {
-      const w = new THREE.Mesh(G.plane, MAT.water);
-      w.rotation.x = -Math.PI / 2;
-      w.scale.set(200, 34, 1);
-      w.position.set(cx, GROUND_Y + 0.03, -70);
-      g.add(w);
-      for (let i = 0; i < 24; i++) addTree(g, R, cx + xr(-110, 110), zr(88, 98), 1 + R() * 0.5, R() < 0.4);
-      addHouse(g, R, cx + xr(-60, 60), -92, { w: 4, d: 3, h: 2.6 });
-      for (let i = 0; i < 8; i++) addTree(g, R, cx + xr(-100, 100), zr(48, 52), 0.8);
-      for (let i = 0; i < 10; i++) addTree(g, R, xr(0, L), zr(55, 90), 1);
+      for (let i = 0; i < 4; i++) addHouse(g, R, 290 + xr(-35, 35), zr(55, 82), { w: 4, d: 3, h: 2.6, wall: pick([MAT.barn, MAT.walls[3]], R) });
+      for (let i = 0; i < 12; i++) addTree(g, R, 290 + xr(-40, 40), zr(50, 86), 0.9 + R() * 0.4, R() < 0.5, R() < 0.5 ? MAT.pine : null);
       break;
     }
     case 'town': {
       // a market town: tall terraced houses packed along the hillside
       for (let i = 0; i < 26; i++) {
         const x = cx + (i / 26 - 0.5) * 170 + xr(-2, 2);
-        addHouse(g, R, x, zr(58, 86), { h: 4.5 + R() * 4.5, w: 4 + R() * 3 });
+        addHouse(g, R, x, zr(58, 86), { h: 3.4 + R() * 2.2, w: 4.5 + R() * 3 });
       }
       addChurch(g, R, cx + xr(-40, 40), zr(80, 88));
       for (let i = 0; i < 10; i++) addTree(g, R, xr(0, L), zr(55, 92), 1);
@@ -1300,28 +1478,80 @@ function spawnField(k) {
       for (let i = 0; i < 12; i++) addTree(g, R, xr(0, L), zr(55, 92), 0.9 + R() * 0.4, false, R() < 0.45 ? MAT.blossom : MAT.pine);
       break;
     }
+    case 'coast':
+    case 'seaside': {
+      // cliff-top land out on the headland; the sea fills the rest
+      const hx = 290;
+      if (theme === 'seaside') {
+        addLighthouse(g, hx + xr(-15, 15), -80);
+        addHouse(g, R, hx + xr(-30, -18), -72, { roof: MAT.roofs[0], wall: MAT.walls[3] });
+      } else {
+        for (let i = 0; i < 5; i++) addHouse(g, R, hx + xr(-35, 35), zr(55, 82), { h: 3, roof: pick(MAT.roofs, R) });
+      }
+      for (let i = 0; i < 6; i++) addTree(g, R, hx + xr(-40, 40), zr(52, 86), 0.8 + R() * 0.3);
+      break;
+    }
+    case 'city': {
+      // an old town of small houses and timber cabins climbing the slope,
+      // gathered round a domed church
+      for (let x = xr(0, 6); x < L; x += xr(6, 11)) {
+        const cabin = R() < 0.35;
+        addHouse(g, R, x, zr(52, 96), cabin
+          ? { wall: MAT.barn, roof: MAT.roofs[3], w: 4 + R() * 2, d: 3.5, h: 2.6 }
+          : { h: 3 + R() * 1.8 });
+      }
+      addChurch(g, R, cx, -88);
+      for (let i = 0; i < 18; i++) addTree(g, R, xr(0, L), zr(50, 96), 0.8 + R() * 0.3);
+      break;
+    }
     case 'hills':
     default: {
+      // soft rolling hills rising behind the field
+      for (let i = 0; i < 7; i++) {
+        const m = new THREE.Mesh(G.crown, pick(MAT.greens, R));
+        m.scale.set(xr(40, 80), xr(5, 11), xr(18, 30));
+        m.position.set(xr(0, L), GROUND_Y - 1, zr(85, 130));
+        g.add(m);
+      }
       for (let i = 0; i < 28; i++) addTree(g, R, xr(0, L), zr(55, 95), 0.9 + R() * 0.6, R() < 0.6);
       for (let i = 0; i < 3; i++) if (R() < 0.7) addHouse(g, R, xr(0, L), zr(70, 85), { roof: MAT.roofs[0] });
     }
   }
+
+  if (STREET[t16]) addStreet(g, R, theme);
 
   // The open land between fields comes closer to the line: lone trees and
   // hedgerows in meadows, a farmhouse by the paddies, bales on the stubble.
   const c0 = fEnd + GAP + 4, c1 = L - 4;
   const ck = COUNTRY[t16];
   for (let x = c0 + xr(0, 30); x < c1; x += xr(25, 70)) {
-    if (R() < 0.45) addTree(g, R, x, zr(10, 34), 0.9 + R() * 0.5, R() < 0.2);
+    if (R() < 0.45) addTree(g, R, x, zr(17, 34), 0.9 + R() * 0.5, R() < 0.2);
     else if (R() < 0.5) for (let i = 0; i < 4 + R() * 5; i++) addTree(g, R, x + i * xr(2.5, 4), zr(28, 40), 0.8 + R() * 0.3);
   }
   if (ck === 1 && R() < 0.8) addHouse(g, R, xr(c0 + 10, c1 - 10), zr(26, 40), { w: 4.5, d: 3.5, h: 2.6 });
-  if (ck === 2) for (let i = 0; i < 8; i++) bale(xr(c0, c1), zr(8, 30));
+  if (ck === 2) for (let i = 0; i < 8; i++) bale(xr(c0, c1), zr(17, 30));
 
+  // sit everything on the rising ground
+  for (const c of g.children) c.position.y += riseAt(k * L + c.position.x, c.position.z);
   outside.add(g);
   return { g, spinners };
 }
 const fields = new Map();
+
+// JS twins of the shader's waterW() and riseAt(), for placing scenery
+const sstep = (a, b, x) => { const t = THREE.MathUtils.clamp((x - a) / (b - a), 0, 1); return t * t * (3 - 2 * t); };
+function waterAt(tx, kind, wid) {
+  const fi = Math.floor(tx / L), local = tx - fi * L;
+  const is = (k) => (Math.abs(WATER[((k % 16) + 16) % 16] - kind) < 0.5 ? 1 : 0);
+  const a = THREE.MathUtils.lerp(is(fi - 1), is(fi), sstep(-wid, wid, local));
+  return THREE.MathUtils.lerp(a, is(fi + 1), sstep(L - wid, L + wid, local));
+}
+function riseAt(tx, z) {
+  tx = ((tx % WRAP) + WRAP) % WRAP;
+  const lake = waterAt(tx, 2, 40), sea = waterAt(tx, 1, 60);
+  const R = Math.max(2, 7 + 5 * Math.sin(tx * 0.0047) + 3 * Math.sin(tx * 0.013 + 1.3));
+  return R * sstep(-44, -154, z) * (1 - Math.max(sea, lake));
+}
 
 // ---------- painterly post pass ----------
 let rtScale = 1;
@@ -1459,6 +1689,7 @@ function applyEnv() {
   lampHeadMat.emissiveIntensity = env.night * 3;
   glowMat.opacity = env.night;
   MAT.win.emissiveIntensity = env.night * 2.2;
+  STORE.glass.emissiveIntensity = 0.25 + env.night * 1.4;
   MAT.water.color.copy(env.hor).lerp(env.top, 0.4).multiplyScalar(1.6);
   rainMesh.visible = env.rain > 0;
   glassMat.uniforms.uRain.value = env.rain;
@@ -1661,13 +1892,33 @@ function updateProps() {
   // countryside, one group per field
   const f0 = Math.floor((travel - 90) / L), f1 = Math.floor((travel + 170) / L);
   for (const [k2, f] of fields) {
-    if (k2 < f0 || k2 > f1) { outside.remove(f.g); fields.delete(k2); }
+    if (k2 < f0 || k2 > f1) {
+      outside.remove(f.g);
+      f.g.traverse((o) => { if (o.userData.own) o.geometry.dispose(); });
+      fields.delete(k2);
+    }
   }
   for (let k2 = f0; k2 <= f1; k2++) {
     if (!fields.has(k2)) fields.set(k2, spawnField(k2));
     const f = fields.get(k2);
     f.g.position.x = k2 * L - travel;
   }
+}
+
+// Tint sky, haze and ambient light towards the current field's palette,
+// easing across the joins between stretches.
+const _grade = new THREE.Color(), _g2 = new THREE.Color();
+function applyGrade() {
+  const fi = Math.floor(travel / L), local = travel - fi * L;
+  const at = (k) => GRADE[((k % 16) + 16) % 16];
+  const ss = (a, b, x) => { const t = THREE.MathUtils.clamp((x - a) / (b - a), 0, 1); return t * t * (3 - 2 * t); };
+  _grade.copy(at(fi - 1)).lerp(at(fi), ss(-60, 60, local));
+  _g2.copy(_grade).lerp(at(fi + 1), ss(L - 60, L + 60, local));
+  U.uFogCol.value.copy(env.fog).multiply(_g2);
+  scene.fog.color.copy(U.uFogCol.value);
+  sky.material.uniforms.uHor.value.copy(env.hor).multiply(_g2);
+  sky.material.uniforms.uTop.value.copy(env.top).lerp(_grade.copy(env.top).multiply(_g2), 0.6);
+  U.uAmb.value.copy(env.amb).multiplyScalar(env.ambI * 0.75).multiply(_grade.set(1, 1, 1).lerp(_g2, 0.5));
 }
 
 function frame(now) {
@@ -1688,6 +1939,7 @@ function frame(now) {
   U.uTime.value = time;
   glassMat.uniforms.uTime.value = time;
   updateProps();
+  applyGrade();
   for (const f of fields.values()) for (const s of f.spinners) s.rotation.z -= dt * s.userData.speed;
 
   // camera: parallax with the mouse, sway of the carriage
@@ -1755,5 +2007,5 @@ function frame(now) {
 }
 
 UI.init({ pages });
-Object.assign(window.__three, { openJournal, closeJournal, openEnvelope, closeEnvelope, pressIntercom });
+Object.assign(window.__three, { openJournal, closeJournal, openEnvelope, closeEnvelope, pressIntercom, U, ground });
 requestAnimationFrame((t) => { last = t; frame(t); UI.reveal(); });

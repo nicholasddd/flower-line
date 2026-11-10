@@ -2,22 +2,22 @@
 // bouquet paintings, journal pages, signboards and surface textures.
 
 export const FLOWERS = [
-  { key: 'roses',          name: 'Roses',          height: 0.70, tint: '#a3283a', rows: 0, hueVar: 0.03 },
-  { key: 'peonies',        name: 'Peonies',        height: 0.80, tint: '#e9a3b4', rows: 0, hueVar: 0.03 },
-  { key: 'carnations',     name: 'Carnations',     height: 0.60, tint: '#e78a9e', rows: 1, hueVar: 0.03 },
-  { key: 'begonias',       name: 'Begonias',       height: 0.45, tint: '#f0c4cc', rows: 0, hueVar: 0.03 },
+  { key: 'roses',          name: 'Roses',          height: 0.70, tint: '#a3283a', rows: 0, hueVar: 0.015 },
+  { key: 'peonies',        name: 'Peonies',        height: 0.80, tint: '#e9a3b4', rows: 0, hueVar: 0.015 },
+  { key: 'carnations',     name: 'Carnations',     height: 0.60, tint: '#e78a9e', rows: 1, hueVar: 0.015 },
+  { key: 'begonias',       name: 'Begonias',       height: 0.45, tint: '#f0c4cc', rows: 0, hueVar: 0.015 },
   { key: 'daisies',        name: 'Daisies',        height: 0.50, tint: '#e9ecd8', rows: 0, hueVar: 0.00 },
-  { key: 'hydrangeas',     name: 'Hydrangeas',     height: 0.90, tint: '#7f8fd0', rows: 0, hueVar: 0.03 },
-  { key: 'orchids',        name: 'Orchids',        height: 0.60, tint: '#e3cf5a', rows: 1, hueVar: 0.03 },
-  { key: 'lilies',         name: 'Lilies',         height: 0.90, tint: '#e98aa8', rows: 0, hueVar: 0.03 },
-  { key: 'chrysanthemums', name: 'Chrysanthemums', height: 0.60, tint: '#efa4b6', rows: 1, hueVar: 0.03 },
-  { key: 'ranunculus',     name: 'Ranunculus',     height: 0.50, tint: '#ef8a3a', rows: 1, hueVar: 0.03 },
-  { key: 'dahlias',        name: 'Dahlias',        height: 0.90, tint: '#c37ac8', rows: 1, hueVar: 0.03 },
-  { key: 'tulips',         name: 'Tulips',         height: 0.55, tint: '#f28a2e', rows: 1, hueVar: 0.03 },
-  { key: 'irises',         name: 'Irises',         height: 0.80, tint: '#6a4fb8', rows: 1, hueVar: 0.03 },
-  { key: 'azaleas',        name: 'Azaleas',        height: 0.80, tint: '#f2c6d6', rows: 0, hueVar: 0.03 },
+  { key: 'hydrangeas',     name: 'Hydrangeas',     height: 0.90, tint: '#7f8fd0', rows: 0, hueVar: 0.015 },
+  { key: 'orchids',        name: 'Orchids',        height: 0.60, tint: '#e3cf5a', rows: 1, hueVar: 0.015 },
+  { key: 'lilies',         name: 'Lilies',         height: 0.90, tint: '#e98aa8', rows: 0, hueVar: 0.015 },
+  { key: 'chrysanthemums', name: 'Chrysanthemums', height: 0.60, tint: '#efa4b6', rows: 1, hueVar: 0.015 },
+  { key: 'ranunculus',     name: 'Ranunculus',     height: 0.50, tint: '#ef8a3a', rows: 1, hueVar: 0.015 },
+  { key: 'dahlias',        name: 'Dahlias',        height: 0.90, tint: '#c37ac8', rows: 1, hueVar: 0.015 },
+  { key: 'tulips',         name: 'Tulips',         height: 0.55, tint: '#f28a2e', rows: 1, hueVar: 0.015 },
+  { key: 'irises',         name: 'Irises',         height: 0.80, tint: '#6a4fb8', rows: 1, hueVar: 0.015 },
+  { key: 'azaleas',        name: 'Azaleas',        height: 0.80, tint: '#f2c6d6', rows: 0, hueVar: 0.015 },
   { key: 'sunflowers',     name: 'Sunflowers',     height: 1.75, tint: '#efc028', rows: 1, hueVar: 0.00 },
-  { key: 'violets',        name: 'Violets',        height: 0.30, tint: '#6f6cc4', rows: 0, hueVar: 0.03 },
+  { key: 'violets',        name: 'Violets',        height: 0.30, tint: '#6f6cc4', rows: 0, hueVar: 0.015 },
 ];
 
 export const CELL = 256, COLS = 8, ROWS = 5;
