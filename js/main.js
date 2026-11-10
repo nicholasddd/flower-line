@@ -1074,89 +1074,128 @@ const bouquet = (() => {
   interior.add(ticket);
 }
 
-// ---------- a folded map of the partner florists ----------
-function mapCanvas() {
-  const c = paperCanvas(512, 97, '#efe4c8');
+// ---------- a tri-fold brochure map of the partner florists ----------
+// Three tall panels side by side: two of bright map, then the cover.
+function brochureCanvas() {
+  const W = 768, H = 512, P = W / 3;
+  const c = document.createElement('canvas');
+  c.width = W; c.height = H;
   const ctx = c.getContext('2d');
   const R = rng(97);
-  // fields and parks
-  for (let i = 0; i < 14; i++) {
-    ctx.fillStyle = i % 3 ? 'rgba(120,150,80,.5)' : 'rgba(200,160,90,.45)';
+  // the map, across the two inside panels
+  ctx.fillStyle = '#fbefc8';
+  ctx.fillRect(0, 0, P * 2, H);
+  for (let i = 0; i < 12; i++) {
+    ctx.fillStyle = ['#8fd16a', '#6cc27a', '#b6e07a'][i % 3];
     ctx.beginPath();
-    ctx.ellipse(R() * 512, R() * 512, 30 + R() * 60, 20 + R() * 40, R() * 3, 0, Math.PI * 2);
+    ctx.ellipse(R() * P * 2, R() * H, 26 + R() * 46, 18 + R() * 34, R() * 3, 0, Math.PI * 2);
     ctx.fill();
   }
-  // a river
-  ctx.strokeStyle = 'rgb(80,130,185)';
-  ctx.lineWidth = 22;
+  ctx.strokeStyle = '#3aa0e8';
+  ctx.lineWidth = 26;
   ctx.lineCap = 'round';
   ctx.beginPath();
-  ctx.moveTo(120, -10);
-  ctx.bezierCurveTo(60, 160, 260, 220, 190, 360);
-  ctx.bezierCurveTo(150, 440, 230, 500, 210, 530);
+  ctx.moveTo(90, -20);
+  ctx.bezierCurveTo(30, 160, 250, 220, 180, 360);
+  ctx.bezierCurveTo(140, 440, 230, 500, 200, 540);
   ctx.stroke();
-  // roads and the railway
-  ctx.strokeStyle = 'rgba(150,90,60,.85)';
-  ctx.lineWidth = 5;
-  for (let i = 0; i < 9; i++) {
-    ctx.beginPath();
-    ctx.moveTo(R() * 512, 0);
-    ctx.bezierCurveTo(R() * 512, 170, R() * 512, 340, R() * 512, 512);
-    ctx.stroke();
+  // roads: white with an orange edge
+  for (const [w, col] of [[11, '#f08a2a'], [6, '#ffffff']]) {
+    ctx.strokeStyle = col;
+    ctx.lineWidth = w;
+    const RR = rng(5);
+    for (let i = 0; i < 7; i++) {
+      ctx.beginPath();
+      ctx.moveTo(RR() * P * 2, 0);
+      ctx.bezierCurveTo(RR() * P * 2, 170, RR() * P * 2, 340, RR() * P * 2, H);
+      ctx.stroke();
+    }
   }
-  ctx.strokeStyle = 'rgba(60,45,35,.7)';
-  ctx.lineWidth = 2;
-  ctx.setLineDash([10, 6]);
+  // the railway in red and white
+  ctx.lineWidth = 9;
+  ctx.strokeStyle = '#d8323a';
   ctx.beginPath();
-  ctx.moveTo(0, 300);
-  ctx.bezierCurveTo(160, 260, 330, 360, 512, 290);
+  ctx.moveTo(0, 300); ctx.bezierCurveTo(140, 250, 330, 360, P * 2, 290);
+  ctx.stroke();
+  ctx.lineWidth = 5;
+  ctx.strokeStyle = '#ffffff';
+  ctx.setLineDash([12, 12]);
   ctx.stroke();
   ctx.setLineDash([]);
-  // pins for the partner florists
-  for (const [x, y] of [[300, 140], [390, 250], [160, 300], [330, 420]]) {
-    ctx.fillStyle = '#8e2a2a';
+  // numbered pink pins
+  [[300, 120], [390, 230], [150, 330], [330, 420], [80, 150]].forEach(([x, y], i) => {
+    ctx.fillStyle = '#e8337a';
     ctx.beginPath();
-    ctx.arc(x, y - 20, 16, 0, Math.PI * 2);
-    ctx.moveTo(x - 13, y - 12); ctx.lineTo(x, y + 6); ctx.lineTo(x + 13, y - 12);
+    ctx.arc(x, y - 22, 19, 0, Math.PI * 2);
+    ctx.moveTo(x - 15, y - 12); ctx.lineTo(x, y + 8); ctx.lineTo(x + 15, y - 12);
     ctx.fill();
-    ctx.fillStyle = '#f3e8d2';
-    ctx.beginPath(); ctx.arc(x, y - 20, 6, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = '#ffffff';
+    ctx.font = 'bold 22px "Cormorant Garamond", serif';
+    ctx.textAlign = 'center';
+    ctx.fillText(String(i + 1), x, y - 15);
+  });
+  // a fold shadow between the inside panels
+  ctx.fillStyle = 'rgba(0,0,0,.08)';
+  ctx.fillRect(P - 2, 0, 4, H);
+  // the cover: deep teal, a big title and a bunch of painted flowers
+  const g = ctx.createLinearGradient(P * 2, 0, W, H);
+  g.addColorStop(0, '#0f7a7a'); g.addColorStop(1, '#0b5a6a');
+  ctx.fillStyle = g;
+  ctx.fillRect(P * 2, 0, P, H);
+  ctx.textAlign = 'center';
+  ctx.fillStyle = '#ffe9a8';
+  ctx.font = '26px "Cormorant Garamond", serif';
+  ctx.fillText('THE FLOWER LINE', P * 2.5, 58);
+  ctx.fillStyle = '#ffffff';
+  ctx.font = '64px "Pinyon Script", cursive';
+  ctx.fillText('Our', P * 2.5, 140);
+  ctx.fillText('Florists', P * 2.5, 200);
+  for (let i = 0; i < 9; i++) {
+    const x = P * 2.5 + (R() - 0.5) * 140, y = 330 + (R() - 0.5) * 90;
+    ctx.fillStyle = ['#ff5a7a', '#ffc23a', '#ff8a3a', '#ff9ac0', '#ffffff'][i % 5];
+    for (let k = 0; k < 6; k++) {
+      ctx.beginPath();
+      ctx.ellipse(x + Math.cos(k) * 11, y + Math.sin(k) * 11, 11, 7, k, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.fillStyle = '#7a3a1a';
+    ctx.beginPath(); ctx.arc(x, y, 5, 0, Math.PI * 2); ctx.fill();
   }
-  // compass and title
-  ctx.strokeStyle = 'rgba(60,45,35,.6)';
-  ctx.lineWidth = 2;
-  ctx.beginPath(); ctx.moveTo(460, 40); ctx.lineTo(460, 100); ctx.moveTo(430, 70); ctx.lineTo(490, 70); ctx.stroke();
-  ctx.fillStyle = 'rgba(60,45,35,.75)';
-  ctx.font = '22px "Cormorant Garamond", serif';
-  ctx.fillText('N', 453, 34);
-  ctx.font = '46px "Pinyon Script", cursive';
-  ctx.fillText('Our florists', 24, 486);
+  ctx.fillStyle = '#ffe9a8';
+  ctx.font = 'italic 22px "Cormorant Garamond", serif';
+  ctx.fillText('a map of friends', P * 2.5, 468);
+  ctx.fillText('along the line', P * 2.5, 494);
   return c;
 }
 
 const floristMap = (() => {
-  const MW = 0.26, MD = 0.18;
+  const PW = 0.1, PD = 0.21, S = 1.35; // a DL leaflet, drawn a little large so it reads
   const g = new THREE.Group();
-  const t = tex(mapCanvas());
-  const back = new THREE.MeshStandardMaterial({ color: '#e6d8b8', roughness: 1 });
-  // two halves meeting at a raised crease, each showing its half of the map
-  for (const side of [-1, 1]) {
+  const t = tex(brochureCanvas());
+  const face = (i) => {
     const tt = t.clone();
     tt.needsUpdate = true;
-    tt.repeat.set(0.5, 1);
-    tt.offset.set(side < 0 ? 0 : 0.5, 0);
-    const half = shadowy(new THREE.Mesh(new THREE.BoxGeometry(MW / 2, 0.0012, MD),
-      [back, back, new THREE.MeshStandardMaterial({ map: tt, roughness: 1 }), back, back, back]), true, true);
-    const hinge = new THREE.Group();
-    half.position.x = side * MW / 4;
-    hinge.add(half);
-    hinge.rotation.z = -side * 0.07;
-    hinge.position.y = 0.0045;
-    g.add(hinge);
-  }
-  g.position.set(-0.37, TOP, -0.41);
-  g.rotation.y = 0.22;
-  g.userData = { kind: 'map', MW, home: { p: g.position.clone(), q: g.quaternion.clone() } };
+    tt.repeat.set(1 / 3, 1);
+    tt.offset.set(i / 3, 0);
+    // a touch of self-light so the print stays bright in the carriage
+    return new THREE.MeshStandardMaterial({ map: tt, emissiveMap: tt, emissive: '#ffffff', emissiveIntensity: 0.22, roughness: 0.5 });
+  };
+  const edge = new THREE.MeshStandardMaterial({ color: '#f4ecd8', roughness: 0.8 });
+  // nearly closed, cover up: the inside map lies underneath and the cover is
+  // lifted from its fold so the bright map peeks out
+  const inside = shadowy(new THREE.Mesh(new THREE.BoxGeometry(PW, 0.002, PD), [edge, edge, face(1), edge, edge, edge]), true, true);
+  inside.position.set(PW / 2, 0.001, 0);
+  const hinge = new THREE.Group();
+  hinge.position.set(0, 0.0025, 0);
+  hinge.rotation.z = 0.32;
+  const cover = shadowy(new THREE.Mesh(new THREE.BoxGeometry(PW, 0.0015, PD), [edge, edge, face(2), face(0), edge, edge]), true, true);
+  cover.position.x = PW / 2;
+  hinge.add(cover);
+  g.add(inside, hinge);
+  g.scale.setScalar(S);
+  g.position.set(-0.4, TOP, -0.43);
+  g.rotation.y = 0.12;
+  g.userData = { kind: 'map', MW: PW * S * 1.6, home: { p: g.position.clone(), q: g.quaternion.clone() } };
   interior.add(g);
   interactive.push(g);
   return g;
