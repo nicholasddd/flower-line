@@ -756,7 +756,6 @@ export function drawBouquet(ctx, atlas, b, cx, cy, size, seed) {
     ctx.quadraticCurveTo(cx + d * s * 0.04, by + s * 0.07, cx + d * s * 0.01, by);
     ctx.fill();
   }
-  brushTexture(ctx, R, cx - s * 0.5, cy - s * 0.5, s, s, 1800, s / 600);
 }
 
 function shadeHex(hex, k) {
@@ -772,8 +771,24 @@ function pageBase(seed, left) {
   const c = document.createElement('canvas');
   c.width = PAGE_W; c.height = PAGE_H;
   const ctx = c.getContext('2d');
-  const p = paperCanvas(512, seed, '#f1e8d4');
-  ctx.drawImage(p, 0, 0, PAGE_W, PAGE_H);
+  // smooth cream paper: a soft uneven tone and a fine grain, no fibres
+  ctx.fillStyle = '#f1e8d4';
+  ctx.fillRect(0, 0, PAGE_W, PAGE_H);
+  const R = rng(seed);
+  for (let i = 0; i < 18; i++) {
+    const x = R() * PAGE_W, y = R() * PAGE_H, r = 120 + R() * 260;
+    const g = ctx.createRadialGradient(x, y, 0, x, y, r);
+    g.addColorStop(0, R() < 0.5 ? 'rgba(255,252,240,0.12)' : 'rgba(200,180,140,0.04)');
+    g.addColorStop(1, 'rgba(0,0,0,0)');
+    ctx.fillStyle = g;
+    ctx.fillRect(x - r, y - r, r * 2, r * 2);
+  }
+  const img = ctx.getImageData(0, 0, PAGE_W, PAGE_H), d = img.data;
+  for (let i = 0; i < d.length; i += 4) {
+    const n = (R() - 0.5) * 7;
+    d[i] += n; d[i + 1] += n; d[i + 2] += n;
+  }
+  ctx.putImageData(img, 0, 0);
   // gutter shadow toward the spine
   const g = ctx.createLinearGradient(left ? PAGE_W : 0, 0, left ? PAGE_W - 120 : 120, 0);
   g.addColorStop(0, 'rgba(70,50,30,0.28)');
@@ -834,7 +849,6 @@ export function buildPages(atlas) {
     ctx.fillStyle = '#5a4a3a';
     ctx.fillText('bouquets we have made, and kept', PAGE_W / 2, 565);
     void p;
-    brushTexture(ctx, R, 0, 0, PAGE_W, PAGE_H, 3000, 1.6);
     pages.push(c);
   }
   BOUQUETS.forEach((b, i) => {
